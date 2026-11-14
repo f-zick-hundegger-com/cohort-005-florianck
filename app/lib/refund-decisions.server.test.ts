@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import * as schema from "~/db/schema";
-import { RefundStatus, UserRole } from "~/db/schema";
+import { RefundPaymentStatus, RefundStatus, UserRole } from "~/db/schema";
 import { createTestDb, seedBaseData } from "~/test/setup";
 import {
   createRefundDecisions,
   RefundDecisionError,
   type EmailMessage,
 } from "./refund-decisions.server";
+import type {
+  PaymentProvider,
+  StartRefundPaymentInput,
+} from "./payment-provider.server";
 
 const NOW = new Date("2026-03-10T12:00:00.000Z");
 
@@ -15,12 +19,23 @@ function setup() {
   const db = createTestDb();
   const base = seedBaseData(db);
   const sent: EmailMessage[] = [];
+  // A fake Payment Provider: it only records what it was asked to start. The
+  // test fires confirmations by hand through decisions.handleConfirmation.
+  const started: StartRefundPaymentInput[] = [];
+  const paymentProvider: PaymentProvider = {
+    name: "fake-pay",
+    async start(input) {
+      started.push(input);
+      return { reference: `fake_ref_${input.refundPaymentId}` };
+    },
+  };
   const decisions = createRefundDecisions({
     db,
     sendEmail: (message) => {
       sent.push(message);
     },
     now: () => NOW,
+    paymentProvider,
   });
 
   const admin = db
@@ -66,7 +81,7 @@ function setup() {
     return db.select().from(schema.refunds).where(eq(schema.refunds.id, id)).get();
   }
 
-  return { db, base, sent, decisions, admin, otherInstructor, requestRefund, readRefund };
+  return { db, base, sent, started, decisions, admin, otherInstructor, requestRefund, readRefund };
 }
 
 describe("listing Requested Refunds", () => {
@@ -402,6 +417,43 @@ describe("approving a Refund", () => {
     });
     expect(readRefund(refund.id)?.status).toBe(RefundStatus.Requested);
     expect(readRefund(own.id)?.status).toBe(RefundStatus.Requested);
+  });
+
+  it("creates a pending Refund Payment and starts it with an idempotency key", async () => {
+    const { decisions, admin, refund, db, started } = approvable();
+
+    await decisions.approve(admin.id, refund.id);
+
+    const payments = db.select().from(schema.refundPayments).all();
+    expect(payments).toHaveLength(1);
+    expect(payments[0]).toMatchObject({
+      refundId: refund.id,
+      provider: "fake-pay",
+      status: RefundPaymentStatus.Pending,
+      confirmedAt: null,
+    });
+    expect(payments[0].idempotencyKey).not.toBe("");
+    expect(started).toEqual([
+      {
+        amount: 4900,
+        idempotencyKey: payments[0].idempotencyKey,
+        refundPaymentId: payments[0].id,
+      },
+    ]);
+  });
+
+  it("does not wait for the provider to start the payment", async () => {
+    const ctx = approvable();
+    const decisions = createRefundDecisions({
+      db: ctx.db,
+      sendEmail: () => {},
+      now: () => NOW,
+      paymentProvider: { name: "slow", start: () => new Promise(() => {}) },
+    });
+
+    await decisions.approve(ctx.admin.id, ctx.refund.id);
+
+    expect(ctx.readRefund(ctx.refund.id)?.status).toBe(RefundStatus.Approved);
   });
 
   it("approves even when the Refund Window has closed", async () => {

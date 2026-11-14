@@ -21,7 +21,11 @@ export default function InstructorRefunds({
   loaderData,
 }: Route.ComponentProps) {
   return (
-    <RefundsScreen title="Refunds on your courses" requested={loaderData.requested} />
+    <RefundsScreen
+      title="Refunds on your courses"
+      requested={loaderData.requested}
+      approvedAndPaid={loaderData.approvedAndPaid}
+    />
   );
 }
 

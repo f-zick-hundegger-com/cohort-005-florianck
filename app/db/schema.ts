@@ -38,6 +38,12 @@ export enum RefundStatus {
   Declined = "declined",
 }
 
+export enum RefundPaymentStatus {
+  Pending = "pending",
+  Succeeded = "succeeded",
+  Failed = "failed",
+}
+
 export enum TeamMemberRole {
   Admin = "admin",
   Member = "member",
@@ -258,8 +264,36 @@ export const refunds = sqliteTable(
       .$defaultFn(() => new Date().toISOString()),
     resolvedAt: text("resolved_at"),
     resolvedByUserId: integer("resolved_by_user_id").references(() => users.id),
+    // When the Payment Provider confirmed the money was sent. Null unless Paid.
+    paidAt: text("paid_at"),
   },
   (table) => [index("refunds_purchase_idx").on(table.purchaseId)]
+);
+
+// One try at sending an Approved Refund's money back (see ADR 0001).
+export const refundPayments = sqliteTable(
+  "refund_payments",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    refundId: integer("refund_id")
+      .notNull()
+      .references(() => refunds.id),
+    provider: text("provider").notNull(),
+    // The provider's own reference. Null until it has accepted the payment.
+    providerReference: text("provider_reference"),
+    // Sent to the provider so a retry or restart cannot pay twice.
+    idempotencyKey: text("idempotency_key").notNull().unique(),
+    status: text("status")
+      .notNull()
+      .$type<RefundPaymentStatus>()
+      .default(RefundPaymentStatus.Pending),
+    createdAt: text("created_at")
+      .notNull()
+      .$defaultFn(() => new Date().toISOString()),
+    // When the provider reported the outcome.
+    confirmedAt: text("confirmed_at"),
+  },
+  (table) => [index("refund_payments_refund_idx").on(table.refundId)]
 );
 
 export const teams = sqliteTable("teams", {

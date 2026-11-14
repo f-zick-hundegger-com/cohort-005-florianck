@@ -1,24 +1,12 @@
 import { data } from "react-router";
 import { z } from "zod";
-import { db } from "~/db";
 import { requireInstructorOrAdmin } from "~/lib/access.server";
-import {
-  createRefundDecisions,
-  logEmail,
-  RefundDecisionError,
-} from "~/lib/refund-decisions.server";
+import { RefundDecisionError } from "~/lib/refund-decisions.server";
+import { getRefundDecisions } from "~/lib/refund-decisions-instance.server";
 import { parseFormData } from "~/lib/validation";
 
 // The loader and action behind the refunds screen, shared by the admin and
 // instructor routes. Who may see or decide what is the module's business.
-
-function getRefundDecisions() {
-  return createRefundDecisions({
-    db,
-    sendEmail: logEmail,
-    now: () => new Date(),
-  });
-}
 
 const refundIdSchema = z.coerce.number().int().positive();
 
@@ -36,7 +24,11 @@ const refundsActionSchema = z.discriminatedUnion("intent", [
 
 export async function loadRefundsScreen(request: Request) {
   const { userId } = await requireInstructorOrAdmin(request);
-  return { requested: getRefundDecisions().listRequested(userId) };
+  const refundDecisions = getRefundDecisions();
+  return {
+    requested: refundDecisions.listRequested(userId),
+    approvedAndPaid: refundDecisions.listApprovedAndPaid(userId),
+  };
 }
 
 export async function runRefundsScreenAction(request: Request) {

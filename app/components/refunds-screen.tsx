@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import { isRouteErrorResponse, Link, useFetcher } from "react-router";
 import { toast } from "sonner";
 import { AlertTriangle } from "lucide-react";
-import type { RequestedRefundRow } from "~/lib/refund-decisions.server";
+import { RefundStatus } from "~/db/schema";
+import type {
+  ApprovedOrPaidRefundRow,
+  RequestedRefundRow,
+} from "~/lib/refund-decisions.server";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import { Textarea } from "~/components/ui/textarea";
@@ -128,12 +132,55 @@ function RefundRow({ refund }: { refund: RequestedRefundRow }) {
   );
 }
 
+function ApprovedRefundRow({ refund }: { refund: ApprovedOrPaidRefundRow }) {
+  const isPaid = refund.status === RefundStatus.Paid;
+  return (
+    <Card>
+      <CardContent className="space-y-1 p-4 text-sm">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <p className="font-medium">{refund.learnerName}</p>
+            <p className="text-muted-foreground">{refund.courseTitle}</p>
+          </div>
+          <div className="text-right">
+            <p className="font-medium">
+              {formatPrice(refund.amountRefunded ?? 0)} refunded
+            </p>
+            <span
+              className={
+                isPaid
+                  ? "rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800"
+                  : "rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800"
+              }
+            >
+              {isPaid ? "Paid" : "Approved"}
+            </span>
+          </div>
+        </div>
+        <p className="text-muted-foreground" suppressHydrationWarning>
+          {refund.payment
+            ? `Payment ${refund.payment.status} via ${refund.payment.provider}` +
+              (refund.payment.providerReference
+                ? ` (${refund.payment.providerReference})`
+                : "")
+            : "No payment started"}
+          {refund.paidAt
+            ? `, paid ${new Date(refund.paidAt).toLocaleString()}`
+            : ""}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function RefundsScreen({
   title,
   requested,
+  approvedAndPaid,
 }: {
   title: string;
   requested: RequestedRefundRow[];
+  approvedAndPaid: ApprovedOrPaidRefundRow[];
 }) {
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
@@ -149,6 +196,21 @@ export function RefundsScreen({
         <div className="space-y-4">
           {requested.map((refund) => (
             <RefundRow key={refund.refundId} refund={refund} />
+          ))}
+        </div>
+      )}
+      <div>
+        <h2 className="text-lg font-semibold">Approved and paid</h2>
+        <p className="text-muted-foreground">
+          Approved refunds turn Paid when the Payment Provider confirms.
+        </p>
+      </div>
+      {approvedAndPaid.length === 0 ? (
+        <p className="text-muted-foreground">No approved refunds yet.</p>
+      ) : (
+        <div className="space-y-4">
+          {approvedAndPaid.map((refund) => (
+            <ApprovedRefundRow key={refund.refundId} refund={refund} />
           ))}
         </div>
       )}

@@ -78,6 +78,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       id: refunds.id,
       status: refunds.status,
       declineReason: refunds.declineReason,
+      paidAt: refunds.paidAt,
       courseTitle: courses.title,
       courseSlug: courses.slug,
       amountPaid: purchases.amountPaid,
@@ -254,6 +255,12 @@ export default function Settings({ loaderData }: Route.ComponentProps) {
                   {new Date(refund.requestedAt).toLocaleDateString()}
                 </p>
                 <p className="mt-2 text-sm">{refund.reason}</p>
+                {refund.status === RefundStatus.Paid && refund.paidAt && (
+                  <p className="mt-2 text-sm" suppressHydrationWarning>
+                    <span className="font-medium">Paid: </span>
+                    {new Date(refund.paidAt).toLocaleDateString()}
+                  </p>
+                )}
                 {refund.status === RefundStatus.Declined &&
                   refund.declineReason && (
                     <p className="mt-2 text-sm">

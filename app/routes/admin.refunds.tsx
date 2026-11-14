@@ -24,7 +24,13 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function AdminRefunds({ loaderData }: Route.ComponentProps) {
-  return <RefundsScreen title="Refunds" requested={loaderData.requested} />;
+  return (
+    <RefundsScreen
+      title="Refunds"
+      requested={loaderData.requested}
+      approvedAndPaid={loaderData.approvedAndPaid}
+    />
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {

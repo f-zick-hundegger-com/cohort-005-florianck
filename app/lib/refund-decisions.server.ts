@@ -1,16 +1,23 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { Database } from "~/db";
 import {
   coupons,
   courses,
   enrollments,
   purchases,
+  refundPayments,
+  RefundPaymentStatus,
   refunds,
   RefundStatus,
   users,
   UserRole,
 } from "~/db/schema";
 import { formatPrice } from "~/lib/utils";
+import type {
+  PaymentProvider,
+  ProviderConfirmation,
+} from "~/lib/payment-provider.server";
 import { getCourseUsage, type CourseUsage } from "~/lib/refunds.server";
 
 // The one module that changes a Refund's state and decides who may do it.
@@ -100,13 +107,55 @@ export function buildRefundApprovedEmail(input: {
   };
 }
 
+export function buildRefundPaidEmail(input: {
+  learnerName: string;
+  learnerEmail: string;
+  courseTitle: string;
+  amount: number;
+}): EmailMessage {
+  return {
+    to: input.learnerEmail,
+    subject: `Your refund for ${input.courseTitle} was paid`,
+    body: [
+      `Hi ${input.learnerName},`,
+      "",
+      `We have sent your refund of ${formatPrice(input.amount)} for ${input.courseTitle} back to you.`,
+      "",
+      "— The Cadence team",
+    ].join("\n"),
+  };
+}
+
+export type ApprovedOrPaidRefundRow = {
+  refundId: number;
+  status: RefundStatus;
+  learnerName: string;
+  courseTitle: string;
+  courseSlug: string;
+  amountRefunded: number | null;
+  paidAt: string | null;
+  /** The latest Refund Payment, if one has been created. */
+  payment: {
+    status: RefundPaymentStatus;
+    provider: string;
+    providerReference: string | null;
+  } | null;
+};
+
 type Dependencies = {
   db: Database;
   sendEmail: EmailSender;
   now: () => Date;
+  /** The active Payment Provider. It never changes Refund state itself. */
+  paymentProvider: PaymentProvider;
 };
 
-export function createRefundDecisions({ db, sendEmail, now }: Dependencies) {
+export function createRefundDecisions({
+  db,
+  sendEmail,
+  now,
+  paymentProvider,
+}: Dependencies) {
   function getDecider(userId: number) {
     const user = db.select().from(users).where(eq(users.id, userId)).get();
     if (
@@ -134,6 +183,8 @@ export function createRefundDecisions({ db, sendEmail, now }: Dependencies) {
         courseSlug: courses.slug,
         courseOwnerId: courses.instructorId,
         amountPaid: purchases.amountPaid,
+        amountRefunded: refunds.amountRefunded,
+        paidAt: refunds.paidAt,
         learnerName: users.name,
         learnerEmail: users.email,
         requestedAt: refunds.requestedAt,
@@ -258,7 +309,7 @@ export function createRefundDecisions({ db, sendEmail, now }: Dependencies) {
     const refund = loadDecidable(deciderId, refundId);
     const decidedAt = now().toISOString();
 
-    db.transaction((tx) => {
+    const refundPaymentId = db.transaction((tx) => {
       // The status guard in the WHERE keeps two simultaneous deciders apart.
       const result = tx
         .update(refunds)
@@ -303,7 +354,22 @@ export function createRefundDecisions({ db, sendEmail, now }: Dependencies) {
           )
         )
         .run();
+
+      return tx
+        .insert(refundPayments)
+        .values({
+          refundId,
+          provider: paymentProvider.name,
+          idempotencyKey: randomUUID(),
+          createdAt: decidedAt,
+        })
+        .returning({ id: refundPayments.id })
+        .get().id;
     });
+
+    // Approval does not wait for the provider: its answer arrives later
+    // through handleConfirmation (ADR 0001).
+    startInBackground(refundPaymentId);
 
     await sendEmail(
       buildRefundApprovedEmail({
@@ -315,5 +381,143 @@ export function createRefundDecisions({ db, sendEmail, now }: Dependencies) {
     );
   }
 
-  return { listRequested, approve, decline };
+  /** Asks the provider to send the money; resolves once it has a reference. */
+  async function startRefundPayment(refundPaymentId: number) {
+    const payment = db
+      .select({
+        idempotencyKey: refundPayments.idempotencyKey,
+        amount: refunds.amountRefunded,
+      })
+      .from(refundPayments)
+      .innerJoin(refunds, eq(refundPayments.refundId, refunds.id))
+      .where(eq(refundPayments.id, refundPaymentId))
+      .get();
+    if (!payment || payment.amount === null) return;
+
+    const { reference } = await paymentProvider.start({
+      amount: payment.amount,
+      idempotencyKey: payment.idempotencyKey,
+      refundPaymentId,
+    });
+    db.update(refundPayments)
+      .set({ providerReference: reference })
+      .where(eq(refundPayments.id, refundPaymentId))
+      .run();
+  }
+
+  function startInBackground(refundPaymentId: number) {
+    startRefundPayment(refundPaymentId).catch((error) => {
+      // Still pending: the startup sweep will start it again.
+      console.error(`Could not start Refund Payment ${refundPaymentId}`, error);
+    });
+  }
+
+  /**
+   * The provider's callback. The only way a Refund becomes Paid. Safe to
+   * handle twice: only a still-pending Refund Payment is acted on.
+   */
+  async function handleConfirmation(confirmation: ProviderConfirmation) {
+    const confirmedAt = now().toISOString();
+
+    const paid = db.transaction((tx) => {
+      const result = tx
+        .update(refundPayments)
+        .set({
+          status: RefundPaymentStatus.Succeeded,
+          confirmedAt,
+        })
+        .where(
+          and(
+            eq(refundPayments.id, confirmation.refundPaymentId),
+            eq(refundPayments.status, RefundPaymentStatus.Pending)
+          )
+        )
+        .run();
+      if (result.changes === 0) return null;
+
+      const payment = tx
+        .select({ refundId: refundPayments.refundId })
+        .from(refundPayments)
+        .where(eq(refundPayments.id, confirmation.refundPaymentId))
+        .get();
+      if (!payment) return null;
+
+      tx.update(refunds)
+        .set({ status: RefundStatus.Paid, paidAt: confirmedAt })
+        .where(eq(refunds.id, payment.refundId))
+        .run();
+      return payment.refundId;
+    });
+    if (paid === null) return;
+
+    const refund = selectRefunds().where(eq(refunds.id, paid)).get();
+    if (!refund) return;
+    await sendEmail(
+      buildRefundPaidEmail({
+        learnerName: refund.learnerName,
+        learnerEmail: refund.learnerEmail,
+        courseTitle: refund.courseTitle,
+        amount: refund.amountRefunded ?? refund.amountPaid,
+      })
+    );
+  }
+
+  /** Run at server start: restarts Refund Payments still pending. */
+  async function sweepPendingRefundPayments() {
+    const pending = db
+      .select({ id: refundPayments.id })
+      .from(refundPayments)
+      .where(eq(refundPayments.status, RefundPaymentStatus.Pending))
+      .all();
+    for (const { id } of pending) {
+      startInBackground(id);
+    }
+  }
+
+  function listApprovedAndPaid(deciderId: number): ApprovedOrPaidRefundRow[] {
+    const decider = getDecider(deciderId);
+    const inScope = inArray(refunds.status, [
+      RefundStatus.Approved,
+      RefundStatus.Paid,
+    ]);
+
+    return selectRefunds()
+      .where(
+        decider.role === UserRole.Instructor
+          ? and(inScope, eq(courses.instructorId, decider.id))
+          : inScope
+      )
+      .orderBy(desc(refunds.resolvedAt), desc(refunds.id))
+      .all()
+      .map((row) => ({
+        refundId: row.refundId,
+        status: row.status,
+        learnerName: row.learnerName,
+        courseTitle: row.courseTitle,
+        courseSlug: row.courseSlug,
+        amountRefunded: row.amountRefunded,
+        paidAt: row.paidAt,
+        payment:
+          db
+            .select({
+              status: refundPayments.status,
+              provider: refundPayments.provider,
+              providerReference: refundPayments.providerReference,
+            })
+            .from(refundPayments)
+            .where(eq(refundPayments.refundId, row.refundId))
+            .orderBy(desc(refundPayments.id))
+            .limit(1)
+            .get() ?? null,
+      }));
+  }
+
+  return {
+    listRequested,
+    listApprovedAndPaid,
+    approve,
+    decline,
+    handleConfirmation,
+    sweepPendingRefundPayments,
+  };
 }
