@@ -34,9 +34,9 @@ describe("redeeming a coupon code", () => {
   it("enrolls the learner with a valid code", () => {
     const { db, base } = setup(null);
 
-    const result = redeemCoupon(db, "SEAT-1", base.user.id, "US");
+    const enrollment = redeemCoupon(db, "SEAT-1", base.user.id, "US");
 
-    expect(result.ok).toBe(true);
+    expect(enrollment).toMatchObject({ userId: base.user.id });
     expect(
       db
         .select()
@@ -49,9 +49,9 @@ describe("redeeming a coupon code", () => {
   it("refuses a void code and does not enroll", () => {
     const { db, base } = setup("2026-03-10T12:00:00.000Z");
 
-    const result = redeemCoupon(db, "SEAT-1", base.user.id, "US");
-
-    expect(result).toMatchObject({ ok: false });
+    expect(() => redeemCoupon(db, "SEAT-1", base.user.id, "US")).toThrow(
+      expect.objectContaining({ init: { status: 400 } })
+    );
     expect(db.select().from(schema.enrollments).all()).toEqual([]);
   });
 });

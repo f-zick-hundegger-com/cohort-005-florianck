@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RefundPaymentStatus } from "~/db/schema";
 import {
   createStripeMockProvider,
   getPaymentProvider,
@@ -37,10 +38,26 @@ describe("the Stripe-like mock Payment Provider", () => {
 
     await vi.advanceTimersByTimeAsync(200);
     expect(confirmations).toEqual([
-      { refundPaymentId: 7, outcome: "succeeded" },
+      { refundPaymentId: 7, outcome: RefundPaymentStatus.Succeeded },
     ]);
     expect(log).toHaveBeenCalledWith(
       `[stripe-mock] refund ${reference} 4900 → succeeded`
+    );
+  });
+
+  it("logs when the request arrives, before any confirmation", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const provider = createStripeMockProvider(() => {});
+
+    const { reference } = await provider.start({
+      amount: 4900,
+      idempotencyKey: "key-1",
+      refundPaymentId: 7,
+    });
+
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(
+      `[stripe-mock] refund ${reference} 4900 requested`
     );
   });
 

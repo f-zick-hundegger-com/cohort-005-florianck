@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import * as schema from "~/db/schema";
 import { RefundPaymentStatus, RefundStatus, UserRole } from "~/db/schema";
+import { getRefundEligibility } from "./refunds.server";
 import { createTestDb, seedBaseData } from "~/test/setup";
 import {
   createRefundDecisions,
@@ -252,6 +253,27 @@ describe("declining a Refund", () => {
     await expect(decisions.decline(admin.id, 999, "Nope.")).rejects.toMatchObject({
       status: 404,
     });
+  });
+
+  it("leaves the learner free to ask again while still inside the Refund Window", async () => {
+    const { db, decisions, admin, base, requestRefund } = setup();
+    const refund = requestRefund();
+    const purchase = db.select().from(schema.purchases).get();
+    if (!purchase) throw new Error("expected a purchase");
+    db.update(schema.purchases)
+      .set({ createdAt: "2026-03-08T10:00:00.000Z" })
+      .where(eq(schema.purchases.id, purchase.id))
+      .run();
+    const inWindow = new Date("2026-03-10T12:00:00.000Z");
+    expect(
+      getRefundEligibility(db, base.user.id, base.course.id, inWindow)
+    ).toMatchObject({ eligible: false });
+
+    await decisions.decline(admin.id, refund.id, "Not convinced.");
+
+    expect(
+      getRefundEligibility(db, base.user.id, base.course.id, inWindow)
+    ).toMatchObject({ eligible: true, purchaseId: purchase.id });
   });
 
   it("refuses a second decision on the same Refund", async () => {

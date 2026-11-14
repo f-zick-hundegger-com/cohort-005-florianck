@@ -28,14 +28,15 @@ export function getRefundDecisions(): RefundDecisions {
   return instance;
 }
 
-// Vite's dev server re-evaluates modules; this keeps the sweep to once.
-const SWEEP_FLAG = Symbol.for("cadence.refundPaymentSweepStarted");
+declare global {
+  // Vite's dev server re-evaluates modules; this keeps the sweep to once.
+  var cadenceRefundPaymentSweepStarted: boolean | undefined;
+}
 
 /** Called from the server entry: restarts Refund Payments still pending. */
 export function startRefundPaymentSweepOnce() {
-  const flags = globalThis as Record<symbol, boolean | undefined>;
-  if (flags[SWEEP_FLAG]) return;
-  flags[SWEEP_FLAG] = true;
+  if (globalThis.cadenceRefundPaymentSweepStarted) return;
+  globalThis.cadenceRefundPaymentSweepStarted = true;
   getRefundDecisions()
     .sweepPendingRefundPayments()
     .catch((error) => {

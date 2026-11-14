@@ -1,6 +1,4 @@
-import { Link, useFetcher, redirect } from "react-router";
-import { useEffect } from "react";
-import { toast } from "sonner";
+import { isRouteErrorResponse, Link, useFetcher, redirect } from "react-router";
 import { z } from "zod";
 import type { Route } from "./+types/redeem.$code";
 import { getCurrentUserId } from "~/lib/session";
@@ -115,13 +113,9 @@ export async function action({ params, request }: Route.ActionArgs) {
   }
 
   const userCountry = await resolveCountry(request);
-  const result = redeemCoupon(db, code, currentUserId, userCountry ?? "");
+  const enrollment = redeemCoupon(db, code, currentUserId, userCountry ?? "");
 
-  if (!result.ok) {
-    return data({ error: result.error }, { status: 400 });
-  }
-
-  const course = getCourseById(result.enrollment.courseId);
+  const course = getCourseById(enrollment.courseId);
   if (!course) {
     throw redirect("/courses");
   }
@@ -129,10 +123,7 @@ export async function action({ params, request }: Route.ActionArgs) {
   throw redirect(`/courses/${course.slug}/welcome`);
 }
 
-export default function Redeem({
-  loaderData,
-  actionData,
-}: Route.ComponentProps) {
+export default function Redeem({ loaderData }: Route.ComponentProps) {
   const {
     course,
     code,
@@ -143,14 +134,6 @@ export default function Redeem({
   } = loaderData;
   const fetcher = useFetcher();
   const isSubmitting = fetcher.state !== "idle";
-
-  useEffect(() => {
-    const error =
-      fetcher.data?.error ?? (actionData as { error?: string })?.error;
-    if (error) {
-      toast.error(error);
-    }
-  }, [fetcher.data, actionData]);
 
   // Determine which state to show
   const canRedeem =
@@ -251,6 +234,24 @@ export default function Redeem({
               View course details
             </Link>
           </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  const message =
+    isRouteErrorResponse(error) && typeof error.data === "string"
+      ? error.data
+      : "Something went wrong redeeming this code.";
+
+  return (
+    <div className="mx-auto max-w-2xl p-6 lg:p-8">
+      <Card>
+        <CardContent className="flex items-center gap-3 p-6 text-destructive">
+          <AlertCircle className="size-5" />
+          {message}
         </CardContent>
       </Card>
     </div>

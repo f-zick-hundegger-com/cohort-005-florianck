@@ -169,26 +169,26 @@ export type CourseUsage = {
  * history on it (not tied to any one Purchase).
  */
 export function getCourseUsage(
-  database: Database,
+  db: Database,
   userId: number,
   courseId: number
 ): CourseUsage {
-  const lessonIds = getLessonIdsForCourse(database, courseId);
-  const completed = getCompletedLessonCount(database, userId, lessonIds);
+  const lessonIds = getLessonIdsForCourse(db, courseId);
+  const completed = getCompletedLessonCount(db, userId, lessonIds);
   return {
-    secondsWatched: getSecondsWatched(database, userId, lessonIds),
+    secondsWatched: getSecondsWatched(db, userId, lessonIds),
     completion: lessonIds.length === 0 ? 0 : completed / lessonIds.length,
   };
 }
 
 export function getRefundEligibility(
-  database: Database,
+  db: Database,
   userId: number,
   courseId: number,
   today: Date = new Date()
 ): RefundEligibility {
   const purchase =
-    database
+    db
       .select()
       .from(purchases)
       .where(
@@ -211,7 +211,7 @@ export function getRefundEligibility(
     );
   }
 
-  const refundStatuses = database
+  const refundStatuses = db
     .select({ status: refunds.status })
     .from(refunds)
     .where(eq(refunds.purchaseId, purchase.id))
@@ -220,7 +220,7 @@ export function getRefundEligibility(
 
   // A seat that came out of a team licence, and has been claimed, belongs to
   // the team — the learner cannot hand it back on their own.
-  const claimedSeat = database
+  const claimedSeat = db
     .select({ id: coupons.id })
     .from(coupons)
     .where(
@@ -228,7 +228,7 @@ export function getRefundEligibility(
     )
     .get();
 
-  const lessonIds = getLessonIdsForCourse(database, courseId);
+  const lessonIds = getLessonIdsForCourse(db, courseId);
 
   return decideRefundEligibility(
     {
@@ -236,8 +236,8 @@ export function getRefundEligibility(
       refundStatuses,
       isClaimedTeamSeat: Boolean(claimedSeat),
       lessonCount: lessonIds.length,
-      completedLessonCount: getCompletedLessonCount(database, userId, lessonIds),
-      secondsWatched: getSecondsWatched(database, userId, lessonIds),
+      completedLessonCount: getCompletedLessonCount(db, userId, lessonIds),
+      secondsWatched: getSecondsWatched(db, userId, lessonIds),
     },
     today
   );

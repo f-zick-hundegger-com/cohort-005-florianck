@@ -108,7 +108,7 @@ describe("confirming a Refund Payment", () => {
 
     await decisions.handleConfirmation({
       refundPaymentId: payments()[0].id,
-      outcome: "succeeded",
+      outcome: RefundPaymentStatus.Succeeded,
     });
 
     expect(readRefund(refund.id)).toMatchObject({
@@ -130,7 +130,7 @@ describe("confirming a Refund Payment", () => {
     const { decisions, payments, refund, readRefund, sent } = await approved();
     const confirmation = {
       refundPaymentId: payments()[0].id,
-      outcome: "succeeded",
+      outcome: RefundPaymentStatus.Succeeded,
     } as const;
 
     await decisions.handleConfirmation(confirmation);
@@ -146,7 +146,7 @@ describe("confirming a Refund Payment", () => {
 
     await decisions.handleConfirmation({
       refundPaymentId: 999,
-      outcome: "succeeded",
+      outcome: RefundPaymentStatus.Succeeded,
     });
 
     expect(sent).toHaveLength(1);
@@ -174,7 +174,7 @@ describe("listing Approved and Paid Refunds", () => {
 
     await decisions.handleConfirmation({
       refundPaymentId: payments()[0].id,
-      outcome: "succeeded",
+      outcome: RefundPaymentStatus.Succeeded,
     });
 
     expect(decisions.listApprovedAndPaid(admin.id)).toMatchObject([
@@ -222,7 +222,7 @@ async function failedRefund() {
   const ctx = await approved();
   await ctx.decisions.handleConfirmation({
     refundPaymentId: ctx.payments()[0].id,
-    outcome: "failed",
+    outcome: RefundPaymentStatus.Failed,
     failureMessage: "Card closed",
   });
   return ctx;
@@ -252,7 +252,7 @@ describe("a failed Refund Payment", () => {
 
     await decisions.handleConfirmation({
       refundPaymentId: payments()[0].id,
-      outcome: "failed",
+      outcome: RefundPaymentStatus.Failed,
       failureMessage: "Card closed",
     });
 
@@ -293,7 +293,7 @@ describe("retrying a Refund Payment", () => {
     await decisions.retryRefundPayment(admin.id, refund.id);
     await decisions.handleConfirmation({
       refundPaymentId: payments()[1].id,
-      outcome: "succeeded",
+      outcome: RefundPaymentStatus.Succeeded,
     });
 
     expect(readRefund(refund.id)?.status).toBe(RefundStatus.Paid);
@@ -321,7 +321,7 @@ describe("retrying a Refund Payment", () => {
 
     await decisions.handleConfirmation({
       refundPaymentId: payments()[0].id,
-      outcome: "succeeded",
+      outcome: RefundPaymentStatus.Succeeded,
     });
     await expect(
       decisions.retryRefundPayment(admin.id, refund.id)
@@ -353,6 +353,43 @@ describe("retrying a Refund Payment", () => {
           failureMessage: "Card closed",
         },
       },
+    ]);
+  });
+});
+
+describe("a provider that confirms the moment it is started", () => {
+  it("still emails the learner approved before paid", async () => {
+    const ctx = setup();
+    const sent: EmailMessage[] = [];
+    const lateBound: { decisions?: ReturnType<typeof createRefundDecisions> } =
+      {};
+    const decisions = createRefundDecisions({
+      db: ctx.db,
+      sendEmail: (message) => {
+        sent.push(message);
+      },
+      now: () => NOW,
+      paymentProvider: {
+        name: "instant",
+        async start(input) {
+          void lateBound.decisions?.handleConfirmation({
+            refundPaymentId: input.refundPaymentId,
+            outcome: RefundPaymentStatus.Succeeded,
+          });
+          return { reference: "instant_ref" };
+        },
+      },
+    });
+    lateBound.decisions = decisions;
+    const refund = ctx.requestRefund();
+
+    await decisions.approve(ctx.admin.id, refund.id);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(ctx.readRefund(refund.id)?.status).toBe(RefundStatus.Paid);
+    expect(sent.map((email) => email.subject)).toEqual([
+      expect.stringContaining("approved"),
+      expect.stringContaining("paid"),
     ]);
   });
 });

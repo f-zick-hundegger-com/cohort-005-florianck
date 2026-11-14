@@ -23,8 +23,27 @@ const refundsActionSchema = z.discriminatedUnion("intent", [
   }),
 ]);
 
-export async function loadRefundsScreen(request: Request) {
-  const { userId } = await requireInstructorOrAdmin(request);
+export type RefundsScreenAudience = "admin" | "instructor";
+
+/** Admins use /admin/refunds, instructors /instructor/refunds. */
+export function assertMayUseRefundsScreen(
+  audience: RefundsScreenAudience,
+  isAdmin: boolean
+) {
+  if (audience === "admin" && !isAdmin) {
+    throw data("Only admins can access this page.", { status: 403 });
+  }
+  if (audience === "instructor" && isAdmin) {
+    throw data("Only instructors can access this page.", { status: 403 });
+  }
+}
+
+export async function loadRefundsScreen(
+  request: Request,
+  audience: RefundsScreenAudience
+) {
+  const { userId, isAdmin } = await requireInstructorOrAdmin(request);
+  assertMayUseRefundsScreen(audience, isAdmin);
   const refundDecisions = getRefundDecisions();
   return {
     requested: refundDecisions.listRequested(userId),
@@ -32,16 +51,20 @@ export async function loadRefundsScreen(request: Request) {
   };
 }
 
+/** Throws a 400 carrying the first problem when the submission is invalid. */
+export function parseRefundsScreenAction(formData: FormData) {
+  const parsed = parseFormData(formData, refundsActionSchema);
+  if (!parsed.success) {
+    const [firstError] = Object.values(parsed.errors);
+    throw data(firstError ?? "Invalid submission.", { status: 400 });
+  }
+  return parsed.data;
+}
+
 export async function runRefundsScreenAction(request: Request) {
   const { userId } = await requireInstructorOrAdmin(request);
-  const parsed = parseFormData(await request.formData(), refundsActionSchema);
-
-  if (!parsed.success) {
-    return data({ errors: parsed.errors }, { status: 400 });
-  }
-
+  const input = parseRefundsScreenAction(await request.formData());
   const refundDecisions = getRefundDecisions();
-  const input = parsed.data;
 
   try {
     if (input.intent === "approve") {

@@ -197,15 +197,23 @@ function ApprovedRefundRow({ refund }: { refund: ApprovedOrPaidRefundRow }) {
   );
 }
 
+const SCREEN_TITLES = {
+  admin: "Refunds",
+  instructor: "Refunds on your courses",
+} as const;
+
 export function RefundsScreen({
-  title,
-  requested,
-  approvedAndPaid,
+  audience,
+  refunds,
 }: {
-  title: string;
-  requested: RequestedRefundRow[];
-  approvedAndPaid: ApprovedOrPaidRefundRow[];
+  audience: keyof typeof SCREEN_TITLES;
+  refunds: {
+    requested: RequestedRefundRow[];
+    approvedAndPaid: ApprovedOrPaidRefundRow[];
+  };
 }) {
+  const { requested, approvedAndPaid } = refunds;
+  const title = SCREEN_TITLES[audience];
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
       <div>

@@ -43,13 +43,14 @@ const REFUND_STATUS_LABELS: Record<RefundStatus, string> = {
   [RefundStatus.Declined]: "Declined",
 };
 
+const GREEN_PILL =
+  "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
+
 const REFUND_STATUS_STYLES: Record<RefundStatus, string> = {
   [RefundStatus.Requested]:
     "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
-  [RefundStatus.Approved]:
-    "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
-  [RefundStatus.Paid]:
-    "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  [RefundStatus.Approved]: GREEN_PILL,
+  [RefundStatus.Paid]: GREEN_PILL,
   [RefundStatus.Declined]:
     "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };

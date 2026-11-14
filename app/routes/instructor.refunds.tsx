@@ -10,7 +10,7 @@ export function meta() {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  return loadRefundsScreen(request);
+  return loadRefundsScreen(request, "instructor");
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -21,11 +21,7 @@ export default function InstructorRefunds({
   loaderData,
 }: Route.ComponentProps) {
   return (
-    <RefundsScreen
-      title="Refunds on your courses"
-      requested={loaderData.requested}
-      approvedAndPaid={loaderData.approvedAndPaid}
-    />
+    <RefundsScreen audience="instructor" refunds={loaderData} />
   );
 }
 

@@ -1,6 +1,4 @@
-import { data } from "react-router";
 import type { Route } from "./+types/admin.refunds";
-import { requireInstructorOrAdmin } from "~/lib/access.server";
 import {
   loadRefundsScreen,
   runRefundsScreenAction,
@@ -12,11 +10,7 @@ export function meta() {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const { isAdmin } = await requireInstructorOrAdmin(request);
-  if (!isAdmin) {
-    throw data("Only admins can access this page.", { status: 403 });
-  }
-  return loadRefundsScreen(request);
+  return loadRefundsScreen(request, "admin");
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -25,11 +19,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function AdminRefunds({ loaderData }: Route.ComponentProps) {
   return (
-    <RefundsScreen
-      title="Refunds"
-      requested={loaderData.requested}
-      approvedAndPaid={loaderData.approvedAndPaid}
-    />
+    <RefundsScreen audience="admin" refunds={loaderData} />
   );
 }
 

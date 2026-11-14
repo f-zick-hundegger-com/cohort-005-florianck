@@ -1,29 +1,26 @@
 import { and, eq } from "drizzle-orm";
+import { data } from "react-router";
 import type { Database } from "~/db";
 import { coupons, enrollments, purchases } from "~/db/schema";
-
-export type RedeemResult =
-  | { ok: true; enrollment: typeof enrollments.$inferSelect }
-  | { ok: false; error: string };
 
 export function redeemCoupon(
   db: Database,
   code: string,
   userId: number,
   userCountry: string
-): RedeemResult {
+): typeof enrollments.$inferSelect {
   const coupon = db.select().from(coupons).where(eq(coupons.code, code)).get();
   if (!coupon) {
-    return { ok: false, error: "Coupon not found" };
+    throw data("Coupon not found", { status: 400 });
   }
 
   if (coupon.redeemedByUserId !== null) {
-    return { ok: false, error: "Coupon has already been redeemed" };
+    throw data("Coupon has already been redeemed", { status: 400 });
   }
 
   // The Purchase was refunded, so the seat is no longer paid for.
   if (coupon.voidedAt !== null) {
-    return { ok: false, error: "This coupon is no longer valid" };
+    throw data("This coupon is no longer valid", { status: 400 });
   }
 
   const existingEnrollment = db
@@ -38,7 +35,7 @@ export function redeemCoupon(
     .get();
 
   if (existingEnrollment) {
-    return { ok: false, error: "You are already enrolled in this course" };
+    throw data("You are already enrolled in this course", { status: 400 });
   }
 
   const purchase = db
@@ -48,11 +45,7 @@ export function redeemCoupon(
     .get();
 
   if (purchase?.country && purchase.country !== userCountry) {
-    return {
-      ok: false,
-      error:
-        "This coupon can only be redeemed from the same country as the purchaser",
-    };
+    throw data("This coupon can only be redeemed from the same country as the purchaser", { status: 400 });
   }
 
   db.update(coupons)
@@ -69,5 +62,5 @@ export function redeemCoupon(
     .returning()
     .get();
 
-  return { ok: true, enrollment };
+  return enrollment;
 }
