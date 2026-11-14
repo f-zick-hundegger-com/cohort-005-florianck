@@ -292,6 +292,8 @@ export const refundPayments = sqliteTable(
       .$defaultFn(() => new Date().toISOString()),
     // When the provider reported the outcome.
     confirmedAt: text("confirmed_at"),
+    // The provider's message when the payment failed.
+    failureMessage: text("failure_message"),
   },
   (table) => [index("refund_payments_refund_idx").on(table.refundId)]
 );

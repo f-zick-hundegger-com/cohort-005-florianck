@@ -10,10 +10,9 @@ export type StartRefundPaymentInput = {
 };
 
 /** What a provider reports back, the shape of a Stripe webhook. */
-export type ProviderConfirmation = {
-  refundPaymentId: number;
-  outcome: "succeeded";
-};
+export type ProviderConfirmation =
+  | { refundPaymentId: number; outcome: "succeeded" }
+  | { refundPaymentId: number; outcome: "failed"; failureMessage: string };
 
 export type ConfirmationCallback = (
   confirmation: ProviderConfirmation

@@ -133,6 +133,12 @@ function RefundRow({ refund }: { refund: RequestedRefundRow }) {
 }
 
 function ApprovedRefundRow({ refund }: { refund: ApprovedOrPaidRefundRow }) {
+  const fetcher = useFetcher<{ success?: boolean; message?: string }>();
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data?.message) {
+      toast.success(fetcher.data.message);
+    }
+  }, [fetcher.state, fetcher.data]);
   const isPaid = refund.status === RefundStatus.Paid;
   return (
     <Card>
@@ -168,6 +174,24 @@ function ApprovedRefundRow({ refund }: { refund: ApprovedOrPaidRefundRow }) {
             ? `, paid ${new Date(refund.paidAt).toLocaleString()}`
             : ""}
         </p>
+        {refund.payment?.failureMessage ? (
+          <p className="text-destructive">
+            Payment failed: {refund.payment.failureMessage}
+          </p>
+        ) : null}
+        {refund.canRetry ? (
+          <fetcher.Form method="post">
+            <input type="hidden" name="intent" value="retry" />
+            <input type="hidden" name="refundId" value={refund.refundId} />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={fetcher.state !== "idle"}
+            >
+              Retry payment
+            </Button>
+          </fetcher.Form>
+        ) : null}
       </CardContent>
     </Card>
   );

@@ -12,6 +12,7 @@ const refundIdSchema = z.coerce.number().int().positive();
 
 const refundsActionSchema = z.discriminatedUnion("intent", [
   z.object({ intent: z.literal("approve"), refundId: refundIdSchema }),
+  z.object({ intent: z.literal("retry"), refundId: refundIdSchema }),
   z.object({
     intent: z.literal("decline"),
     refundId: refundIdSchema,
@@ -46,6 +47,10 @@ export async function runRefundsScreenAction(request: Request) {
     if (input.intent === "approve") {
       await refundDecisions.approve(userId, input.refundId);
       return { success: true, message: "Refund approved." };
+    }
+    if (input.intent === "retry") {
+      await refundDecisions.retryRefundPayment(userId, input.refundId);
+      return { success: true, message: "Payment restarted." };
     }
     await refundDecisions.decline(userId, input.refundId, input.declineReason);
   } catch (error) {

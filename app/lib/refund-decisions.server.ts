@@ -126,6 +126,31 @@ export function buildRefundPaidEmail(input: {
   };
 }
 
+export function buildRefundPaymentFailedEmail(input: {
+  deciderName: string;
+  deciderEmail: string;
+  learnerName: string;
+  courseTitle: string;
+  amount: number;
+  failureMessage: string;
+}): EmailMessage {
+  return {
+    to: input.deciderEmail,
+    subject: `Refund payment failed for ${input.courseTitle}`,
+    body: [
+      `Hi ${input.deciderName},`,
+      "",
+      `The refund payment of ${formatPrice(input.amount)} to ${input.learnerName} for ${input.courseTitle} failed.`,
+      "",
+      `Reason from the payment provider: ${input.failureMessage}`,
+      "",
+      "The refund is still approved. Use Retry payment on the refunds screen to try again.",
+      "",
+      "— The Cadence team",
+    ].join("\n"),
+  };
+}
+
 export type ApprovedOrPaidRefundRow = {
   refundId: number;
   status: RefundStatus;
@@ -139,7 +164,10 @@ export type ApprovedOrPaidRefundRow = {
     status: RefundPaymentStatus;
     provider: string;
     providerReference: string | null;
+    failureMessage: string | null;
   } | null;
+  /** True when the latest Refund Payment failed, so a retry is allowed. */
+  canRetry: boolean;
 };
 
 type Dependencies = {
@@ -418,14 +446,20 @@ export function createRefundDecisions({
    */
   async function handleConfirmation(confirmation: ProviderConfirmation) {
     const confirmedAt = now().toISOString();
+    const succeeded = confirmation.outcome === "succeeded";
 
-    const paid = db.transaction((tx) => {
+    const refundId = db.transaction((tx) => {
       const result = tx
         .update(refundPayments)
-        .set({
-          status: RefundPaymentStatus.Succeeded,
-          confirmedAt,
-        })
+        .set(
+          confirmation.outcome === "succeeded"
+            ? { status: RefundPaymentStatus.Succeeded, confirmedAt }
+            : {
+                status: RefundPaymentStatus.Failed,
+                confirmedAt,
+                failureMessage: confirmation.failureMessage,
+              }
+        )
         .where(
           and(
             eq(refundPayments.id, confirmation.refundPaymentId),
@@ -442,24 +476,118 @@ export function createRefundDecisions({
         .get();
       if (!payment) return null;
 
-      tx.update(refunds)
-        .set({ status: RefundStatus.Paid, paidAt: confirmedAt })
-        .where(eq(refunds.id, payment.refundId))
-        .run();
+      // A failure leaves the Refund Approved.
+      if (succeeded) {
+        tx.update(refunds)
+          .set({ status: RefundStatus.Paid, paidAt: confirmedAt })
+          .where(eq(refunds.id, payment.refundId))
+          .run();
+      }
       return payment.refundId;
     });
-    if (paid === null) return;
+    if (refundId === null) return;
 
-    const refund = selectRefunds().where(eq(refunds.id, paid)).get();
+    const refund = selectRefunds().where(eq(refunds.id, refundId)).get();
     if (!refund) return;
+
+    if (confirmation.outcome === "succeeded") {
+      await sendEmail(
+        buildRefundPaidEmail({
+          learnerName: refund.learnerName,
+          learnerEmail: refund.learnerEmail,
+          courseTitle: refund.courseTitle,
+          amount: refund.amountRefunded ?? refund.amountPaid,
+        })
+      );
+      return;
+    }
+
+    // Only the decider who approved it hears about a failure, not the learner.
+    const approver = db
+      .select()
+      .from(refunds)
+      .innerJoin(users, eq(refunds.resolvedByUserId, users.id))
+      .where(eq(refunds.id, refundId))
+      .get();
+    if (!approver) return;
     await sendEmail(
-      buildRefundPaidEmail({
+      buildRefundPaymentFailedEmail({
+        deciderName: approver.users.name,
+        deciderEmail: approver.users.email,
         learnerName: refund.learnerName,
-        learnerEmail: refund.learnerEmail,
         courseTitle: refund.courseTitle,
         amount: refund.amountRefunded ?? refund.amountPaid,
+        failureMessage: confirmation.failureMessage,
       })
     );
+  }
+
+  /**
+   * Any decider for the course may retry, but only once the latest Refund
+   * Payment has failed, so two payments are never in flight together.
+   */
+  async function retryRefundPayment(deciderId: number, refundId: number) {
+    const decider = getDecider(deciderId);
+    const refund = selectRefunds().where(eq(refunds.id, refundId)).get();
+    if (!refund) {
+      throw new RefundDecisionError("Refund not found.", 404);
+    }
+    if (
+      decider.role === UserRole.Instructor &&
+      refund.courseOwnerId !== decider.id
+    ) {
+      throw new RefundDecisionError(
+        "You can only decide on refunds for courses you own.",
+        403
+      );
+    }
+    if (
+      decider.role === UserRole.Admin &&
+      refund.purchaseUserId === decider.id
+    ) {
+      throw new RefundDecisionError(
+        "You cannot decide on a refund for your own purchase.",
+        403
+      );
+    }
+
+    const latest = latestRefundPayment(refundId);
+    if (
+      refund.status !== RefundStatus.Approved ||
+      latest?.status !== RefundPaymentStatus.Failed
+    ) {
+      throw new RefundDecisionError(
+        "A payment can only be retried after the latest one has failed.",
+        409
+      );
+    }
+
+    const refundPaymentId = db
+      .insert(refundPayments)
+      .values({
+        refundId,
+        provider: paymentProvider.name,
+        idempotencyKey: randomUUID(),
+        createdAt: now().toISOString(),
+      })
+      .returning({ id: refundPayments.id })
+      .get().id;
+    startInBackground(refundPaymentId);
+  }
+
+  function latestRefundPayment(refundId: number) {
+    return db
+      .select({
+        status: refundPayments.status,
+        provider: refundPayments.provider,
+        providerReference: refundPayments.providerReference,
+        failureMessage: refundPayments.failureMessage,
+      })
+      .from(refundPayments)
+      .where(eq(refundPayments.refundId, refundId))
+      .orderBy(desc(refundPayments.id))
+      .limit(1)
+      .get();
   }
 
   /** Run at server start: restarts Refund Payments still pending. */
@@ -497,18 +625,11 @@ export function createRefundDecisions({
         courseSlug: row.courseSlug,
         amountRefunded: row.amountRefunded,
         paidAt: row.paidAt,
-        payment:
-          db
-            .select({
-              status: refundPayments.status,
-              provider: refundPayments.provider,
-              providerReference: refundPayments.providerReference,
-            })
-            .from(refundPayments)
-            .where(eq(refundPayments.refundId, row.refundId))
-            .orderBy(desc(refundPayments.id))
-            .limit(1)
-            .get() ?? null,
+        payment: latestRefundPayment(row.refundId) ?? null,
+        canRetry:
+          row.status === RefundStatus.Approved &&
+          latestRefundPayment(row.refundId)?.status ===
+            RefundPaymentStatus.Failed,
       }));
   }
 
@@ -518,6 +639,7 @@ export function createRefundDecisions({
     approve,
     decline,
     handleConfirmation,
+    retryRefundPayment,
     sweepPendingRefundPayments,
   };
 }

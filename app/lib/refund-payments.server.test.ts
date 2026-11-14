@@ -217,3 +217,142 @@ describe("the startup sweep", () => {
     ]);
   });
 });
+
+async function failedRefund() {
+  const ctx = await approved();
+  await ctx.decisions.handleConfirmation({
+    refundPaymentId: ctx.payments()[0].id,
+    outcome: "failed",
+    failureMessage: "Card closed",
+  });
+  return ctx;
+}
+
+describe("a failed Refund Payment", () => {
+  it("leaves the Refund Approved, records the failure and emails only the approving decider", async () => {
+    const { payments, refund, readRefund, sent, admin } = await failedRefund();
+
+    expect(readRefund(refund.id)?.status).toBe(RefundStatus.Approved);
+    expect(payments()[0]).toMatchObject({
+      status: RefundPaymentStatus.Failed,
+      failureMessage: "Card closed",
+      confirmedAt: NOW.toISOString(),
+    });
+    expect(sent).toHaveLength(2);
+    expect(sent[1].to).toBe(admin.email);
+    expect(sent[1].subject).toContain("payment failed");
+    expect(sent[1].body).toContain("Card closed");
+    expect(
+      sent.filter((email) => email.to === "test@example.com")
+    ).toHaveLength(1);
+  });
+
+  it("ignores a duplicate failure confirmation", async () => {
+    const { decisions, payments, sent } = await failedRefund();
+
+    await decisions.handleConfirmation({
+      refundPaymentId: payments()[0].id,
+      outcome: "failed",
+      failureMessage: "Card closed",
+    });
+
+    expect(sent).toHaveLength(2);
+  });
+
+  it("is not retried by the startup sweep", async () => {
+    const { decisions, started } = await failedRefund();
+    started.length = 0;
+
+    await decisions.sweepPendingRefundPayments();
+
+    expect(started).toEqual([]);
+  });
+});
+
+describe("retrying a Refund Payment", () => {
+  it("lets any decider for the course create a new pending payment with a new key", async () => {
+    const { decisions, payments, refund, base, started } =
+      await failedRefund();
+    started.length = 0;
+
+    await decisions.retryRefundPayment(base.instructor.id, refund.id);
+
+    const all = payments();
+    expect(all).toHaveLength(2);
+    expect(all[1].status).toBe(RefundPaymentStatus.Pending);
+    expect(all[1].idempotencyKey).not.toBe(all[0].idempotencyKey);
+    expect(started).toMatchObject([
+      { amount: 4900, idempotencyKey: all[1].idempotencyKey },
+    ]);
+  });
+
+  it("ends Paid with exactly one paid email after approve, fail, retry, success", async () => {
+    const { decisions, payments, refund, admin, readRefund, sent } =
+      await failedRefund();
+
+    await decisions.retryRefundPayment(admin.id, refund.id);
+    await decisions.handleConfirmation({
+      refundPaymentId: payments()[1].id,
+      outcome: "succeeded",
+    });
+
+    expect(readRefund(refund.id)?.status).toBe(RefundStatus.Paid);
+    expect(
+      sent.filter((email) => email.subject.includes("was paid"))
+    ).toHaveLength(1);
+  });
+
+  it("is refused while a payment is pending", async () => {
+    const { decisions, refund, admin, payments } = await approved();
+
+    await expect(
+      decisions.retryRefundPayment(admin.id, refund.id)
+    ).rejects.toMatchObject({ status: 409 });
+    expect(payments()).toHaveLength(1);
+  });
+
+  it("is refused on Requested, Paid and Declined Refunds", async () => {
+    const { decisions, requestRefund, admin, payments, refund } =
+      await approved();
+    const requested = requestRefund();
+    await expect(
+      decisions.retryRefundPayment(admin.id, requested.id)
+    ).rejects.toMatchObject({ status: 409 });
+
+    await decisions.handleConfirmation({
+      refundPaymentId: payments()[0].id,
+      outcome: "succeeded",
+    });
+    await expect(
+      decisions.retryRefundPayment(admin.id, refund.id)
+    ).rejects.toMatchObject({ status: 409 });
+
+    await decisions.decline(admin.id, requested.id, "No.");
+    await expect(
+      decisions.retryRefundPayment(admin.id, requested.id)
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("is refused for an instructor who does not own the course", async () => {
+    const { decisions, refund, otherInstructor } = await failedRefund();
+
+    await expect(
+      decisions.retryRefundPayment(otherInstructor.id, refund.id)
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("lists a failed latest payment as retryable", async () => {
+    const { decisions, admin, refund } = await failedRefund();
+
+    expect(decisions.listApprovedAndPaid(admin.id)).toMatchObject([
+      {
+        refundId: refund.id,
+        canRetry: true,
+        payment: {
+          status: RefundPaymentStatus.Failed,
+          failureMessage: "Card closed",
+        },
+      },
+    ]);
+  });
+});
