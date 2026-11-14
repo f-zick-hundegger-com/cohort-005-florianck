@@ -18,7 +18,7 @@ export const REFUND_COMPLETION_LIMIT = 0.5;
 
 export type RefundIneligibleReason =
   | "no-purchase"
-  | "already-requested"
+  | "already-refunded"
   | "claimed-team-seat"
   | "outside-refund-window"
   | "completed-too-much"
@@ -35,7 +35,8 @@ export type RefundEligibility =
 
 export type RefundFacts = {
   purchase: { id: number; amountPaid: number; createdAt: string } | null;
-  hasRequestedRefund: boolean;
+  /** The status of every Refund already asked for on this Purchase. */
+  refundStatuses: RefundStatus[];
   isClaimedTeamSeat: boolean;
   lessonCount: number;
   completedLessonCount: number;
@@ -62,8 +63,11 @@ export function decideRefundEligibility(
   const { purchase } = facts;
 
   if (!purchase) return { eligible: false, reason: "no-purchase" };
-  if (facts.hasRequestedRefund) {
-    return { eligible: false, reason: "already-requested" };
+  // A Requested Refund is still waiting on us, and an Approved Refund means
+  // the money is going back — either way there is nothing left to ask for.
+  // Only a Declined Refund lets the learner ask again.
+  if (facts.refundStatuses.some((status) => status !== RefundStatus.Declined)) {
+    return { eligible: false, reason: "already-refunded" };
   }
   if (facts.isClaimedTeamSeat) {
     return { eligible: false, reason: "claimed-team-seat" };
@@ -165,7 +169,7 @@ export function getRefundEligibility(
     return decideRefundEligibility(
       {
         purchase: null,
-        hasRequestedRefund: false,
+        refundStatuses: [],
         isClaimedTeamSeat: false,
         lessonCount: 0,
         completedLessonCount: 0,
@@ -175,16 +179,12 @@ export function getRefundEligibility(
     );
   }
 
-  const requestedRefund = db
-    .select({ id: refunds.id })
+  const refundStatuses = db
+    .select({ status: refunds.status })
     .from(refunds)
-    .where(
-      and(
-        eq(refunds.purchaseId, purchase.id),
-        eq(refunds.status, RefundStatus.Requested)
-      )
-    )
-    .get();
+    .where(eq(refunds.purchaseId, purchase.id))
+    .all()
+    .map((row) => row.status);
 
   // A seat that came out of a team licence, and has been claimed, belongs to
   // the team — the learner cannot hand it back on their own.
@@ -201,7 +201,7 @@ export function getRefundEligibility(
   return decideRefundEligibility(
     {
       purchase,
-      hasRequestedRefund: Boolean(requestedRefund),
+      refundStatuses,
       isClaimedTeamSeat: Boolean(claimedSeat),
       lessonCount: lessonIds.length,
       completedLessonCount: getCompletedLessonCount(userId, lessonIds),
