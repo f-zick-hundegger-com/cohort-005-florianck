@@ -4,13 +4,14 @@ import {
   REFUND_WATCH_LIMIT_SECONDS,
   type RefundFacts,
 } from "./refunds.server";
+import { RefundStatus } from "~/db/schema";
 
 const purchasedAt = new Date(2026, 0, 1, 23, 0);
 
 function facts(overrides: Partial<RefundFacts> = {}): RefundFacts {
   return {
     purchase: { id: 7, amountPaid: 4900, createdAt: purchasedAt.toISOString() },
-    hasRequestedRefund: false,
+    refundStatuses: [],
     isClaimedTeamSeat: false,
     lessonCount: 10,
     completedLessonCount: 0,
@@ -51,13 +52,42 @@ describe("decideRefundEligibility", () => {
     ).toEqual({ eligible: false, reason: "no-purchase" });
   });
 
-  it("is not eligible when a refund is already requested", () => {
+  it("is not eligible while a Requested Refund is waiting", () => {
     expect(
       decideRefundEligibility(
-        facts({ hasRequestedRefund: true }),
+        facts({ refundStatuses: [RefundStatus.Requested] }),
         dayAfterPurchase
       )
-    ).toEqual({ eligible: false, reason: "already-requested" });
+    ).toEqual({ eligible: false, reason: "already-refunded" });
+  });
+
+  it("is not eligible once a Refund has been Approved", () => {
+    expect(
+      decideRefundEligibility(
+        facts({ refundStatuses: [RefundStatus.Approved] }),
+        dayAfterPurchase
+      )
+    ).toEqual({ eligible: false, reason: "already-refunded" });
+  });
+
+  it("lets the learner ask again after a Declined Refund", () => {
+    expect(
+      decideRefundEligibility(
+        facts({ refundStatuses: [RefundStatus.Declined] }),
+        dayAfterPurchase
+      )
+    ).toMatchObject({ eligible: true });
+  });
+
+  it("is not eligible when an earlier Refund was Declined and a later one Approved", () => {
+    expect(
+      decideRefundEligibility(
+        facts({
+          refundStatuses: [RefundStatus.Declined, RefundStatus.Approved],
+        }),
+        dayAfterPurchase
+      )
+    ).toEqual({ eligible: false, reason: "already-refunded" });
   });
 
   it("is not eligible for a claimed team seat", () => {

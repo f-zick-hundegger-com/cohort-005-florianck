@@ -30,8 +30,8 @@ const INELIGIBLE: Record<
   { message: string; status: number }
 > = {
   "no-purchase": { message: "You have not bought this course.", status: 403 },
-  "already-requested": {
-    message: "You already have a request open on this purchase.",
+  "already-refunded": {
+    message: "You already have a refund on this purchase.",
     status: 409,
   },
   "claimed-team-seat": {
