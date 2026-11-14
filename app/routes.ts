@@ -23,6 +23,7 @@ export default [
     route("instructor/new", "routes/instructor.new.tsx"),
     route("instructor/questions", "routes/instructor.questions.tsx"),
     route("instructor/analytics", "routes/instructor.analytics.tsx"),
+    route("instructor/refunds", "routes/instructor.refunds.tsx"),
     route("instructor/:courseId", "routes/instructor.$courseId.tsx"),
     route(
       "instructor/:courseId/lessons/:lessonId",
@@ -41,6 +42,7 @@ export default [
       "routes/instructor.$courseId.students.tsx"
     ),
     route("admin/users", "routes/admin.users.tsx"),
+    route("admin/refunds", "routes/admin.refunds.tsx"),
     route("admin/courses", "routes/admin.courses.tsx"),
     route("admin/categories", "routes/admin.categories.tsx"),
     route("settings", "routes/settings.tsx"),

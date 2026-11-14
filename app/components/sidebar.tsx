@@ -8,6 +8,7 @@ import {
   ChartColumn,
   LayoutDashboard,
   GraduationCap,
+  Undo2,
   MessageSquare,
   Shield,
   Tag,
@@ -79,6 +80,18 @@ const navItems: NavItem[] = [
     to: "/instructor/questions",
     icon: <MessageSquare className="size-4" />,
     roles: [UserRole.Instructor, UserRole.Admin],
+  },
+  {
+    label: "Refunds",
+    to: "/instructor/refunds",
+    icon: <Undo2 className="size-4" />,
+    roles: [UserRole.Instructor],
+  },
+  {
+    label: "Refunds",
+    to: "/admin/refunds",
+    icon: <Undo2 className="size-4" />,
+    roles: [UserRole.Admin],
   },
   {
     label: "Manage Users",

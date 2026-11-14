@@ -48,6 +48,9 @@ function getDb() {
   return instance;
 }
 
+/** The database handle's type, for modules that take it as a dependency. */
+export type Database = ReturnType<typeof getDb>;
+
 export const db = /* @__PURE__ */ new Proxy({} as ReturnType<typeof getDb>, {
   get(_target, prop) {
     const target = getDb();

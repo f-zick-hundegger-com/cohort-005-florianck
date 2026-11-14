@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 import { parseFormData, parseParams } from "~/lib/validation";
 import { formatPrice } from "~/lib/utils";
 import {
+  getCourseUsage,
   getRefundEligibility,
   REFUND_WINDOW_DAYS,
   type RefundIneligibleReason,
@@ -102,7 +103,7 @@ export async function action({ params, request }: Route.ActionArgs) {
     throw data("User not found", { status: 404 });
   }
 
-  const eligibility = getRefundEligibility(currentUserId, course.id);
+  const eligibility = getRefundEligibility(db, currentUserId, course.id);
 
   if (!eligibility.eligible) {
     const { message, status } = INELIGIBLE[eligibility.reason];
@@ -116,11 +117,16 @@ export async function action({ params, request }: Route.ActionArgs) {
     return data({ errors: parsed.errors }, { status: 400 });
   }
 
+  const usage = getCourseUsage(db, currentUserId, course.id);
+
   db.insert(refunds)
     .values({
       purchaseId: eligibility.purchaseId,
       status: RefundStatus.Requested,
       reason: parsed.data.reason,
+      lastDayInWindowAtRequest: eligibility.lastDayInWindow,
+      secondsWatchedAtRequest: usage.secondsWatched,
+      completionAtRequest: usage.completion,
     })
     .run();
 

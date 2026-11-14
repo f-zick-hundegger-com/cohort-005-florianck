@@ -71,6 +71,34 @@
       "when": 1790083397130,
       "tag": "0009_clear_professor_monster",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1794684818388,
+      "tag": "0010_slippery_hellfire_club",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1794685067646,
+      "tag": "0011_woozy_smiling_tiger",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1794685359024,
+      "tag": "0012_sour_lightspeed",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1794685641969,
+      "tag": "0013_milky_lenny_balinger",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { db } from "~/db";
+import type { Database } from "~/db";
 import {
   coupons,
   lessonProgress,
@@ -102,7 +102,7 @@ export function decideRefundEligibility(
   };
 }
 
-function getLessonIdsForCourse(courseId: number): number[] {
+function getLessonIdsForCourse(db: Database, courseId: number): number[] {
   return db
     .select({ id: lessons.id })
     .from(lessons)
@@ -112,7 +112,11 @@ function getLessonIdsForCourse(courseId: number): number[] {
     .map((row) => row.id);
 }
 
-function getCompletedLessonCount(userId: number, lessonIds: number[]) {
+function getCompletedLessonCount(
+  db: Database,
+  userId: number,
+  lessonIds: number[]
+) {
   if (lessonIds.length === 0) return 0;
 
   const result = db
@@ -130,7 +134,11 @@ function getCompletedLessonCount(userId: number, lessonIds: number[]) {
   return result?.count ?? 0;
 }
 
-function getSecondsWatched(userId: number, lessonIds: number[]) {
+function getSecondsWatched(
+  db: Database,
+  userId: number,
+  lessonIds: number[]
+) {
   if (lessonIds.length === 0) return 0;
 
   const furthestPerLesson = db
@@ -150,7 +158,31 @@ function getSecondsWatched(userId: number, lessonIds: number[]) {
   return furthestPerLesson.reduce((total, row) => total + row.furthest, 0);
 }
 
+export type CourseUsage = {
+  secondsWatched: number;
+  /** Share of the course's lessons completed, 0 to 1. */
+  completion: number;
+};
+
+/**
+ * What the learner has watched and completed on a course, across all their
+ * history on it (not tied to any one Purchase).
+ */
+export function getCourseUsage(
+  db: Database,
+  userId: number,
+  courseId: number
+): CourseUsage {
+  const lessonIds = getLessonIdsForCourse(db, courseId);
+  const completed = getCompletedLessonCount(db, userId, lessonIds);
+  return {
+    secondsWatched: getSecondsWatched(db, userId, lessonIds),
+    completion: lessonIds.length === 0 ? 0 : completed / lessonIds.length,
+  };
+}
+
 export function getRefundEligibility(
+  db: Database,
   userId: number,
   courseId: number,
   today: Date = new Date()
@@ -162,7 +194,7 @@ export function getRefundEligibility(
       .where(
         and(eq(purchases.userId, userId), eq(purchases.courseId, courseId))
       )
-      .orderBy(desc(purchases.createdAt))
+      .orderBy(desc(purchases.createdAt), desc(purchases.id))
       .get() ?? null;
 
   if (!purchase) {
@@ -196,7 +228,7 @@ export function getRefundEligibility(
     )
     .get();
 
-  const lessonIds = getLessonIdsForCourse(courseId);
+  const lessonIds = getLessonIdsForCourse(db, courseId);
 
   return decideRefundEligibility(
     {
@@ -204,8 +236,8 @@ export function getRefundEligibility(
       refundStatuses,
       isClaimedTeamSeat: Boolean(claimedSeat),
       lessonCount: lessonIds.length,
-      completedLessonCount: getCompletedLessonCount(userId, lessonIds),
-      secondsWatched: getSecondsWatched(userId, lessonIds),
+      completedLessonCount: getCompletedLessonCount(db, userId, lessonIds),
+      secondsWatched: getSecondsWatched(db, userId, lessonIds),
     },
     today
   );

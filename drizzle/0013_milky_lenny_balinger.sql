@@ -1,0 +1,1 @@
+ALTER TABLE `refund_payments` ADD `failure_message` text;

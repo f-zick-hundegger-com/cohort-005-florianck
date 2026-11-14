@@ -17,14 +17,18 @@ A Refund the learner has asked for that nobody has decided on yet. A Purchase ha
 _Avoid_: Pending refund, open refund
 
 **Approved Refund**:
-A Refund we have agreed to pay back, but whose money has not gone back yet. Once a Refund is Approved, the Purchase cannot be refunded again.
+A Refund an admin or the course's instructor has decided to pay back in full. Nothing is confirmed as sent yet: that only happens when it becomes a Paid Refund. Once a Refund is Approved, the Purchase cannot be refunded again.
 
 **Paid Refund**:
-A Refund whose money has gone back to the learner. Every Paid Refund was Approved first.
+A Refund whose Payment Provider has confirmed the money was sent back to the learner. Every Paid Refund was Approved first.
 _Avoid_: Issued refund, completed refund, closed refund, processed refund
 
+**Refund Payment**:
+One try at sending an Approved Refund's money back through the Payment Provider. A Refund can have several; it becomes a Paid Refund when one succeeds.
+_Avoid_: Payout, transfer, payment attempt
+
 **Declined Refund**:
-A Refund we have turned down; nothing is paid back. The learner may ask again while still inside the Refund Window.
+A Refund we have turned down, with a reason given to the learner; nothing is paid back. The learner may ask again while still inside the Refund Window.
 _Avoid_: Rejected refund, denied refund
 
 **Refund Window**:
@@ -38,6 +42,10 @@ _Avoid_: Cancellation offer
 **Refundable Amount**:
 The money we would pay back if a Refund on this Purchase were Approved.
 _Avoid_: Cancellation amount, offer
+
+**Payment Provider**:
+The outside service that actually moves money for us, such as Stripe. Which one we use can change; the meaning of a Refund does not.
+_Avoid_: Gateway, processor, PSP
 
 **Chargeback**:
 The cardholder's bank pulling money back for a Purchase without going through us. Reserved: the platform does not handle chargebacks yet.

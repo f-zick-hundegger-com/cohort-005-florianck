@@ -38,6 +38,7 @@ import { formatDuration, formatPrice } from "~/lib/utils";
 import { resolveCountry } from "~/lib/country.server";
 import { calculatePppPrice, getCountryTierInfo, COUNTRIES } from "~/lib/ppp";
 import { parseFormData, parseParams } from "~/lib/validation";
+import { assertCanBuyCourse } from "~/lib/purchase-guard";
 
 function getCourseBySlug(slug: string) {
   return db.select().from(courses).where(eq(courses.slug, slug)).get();
@@ -294,6 +295,8 @@ export async function loader({ params, request, url }: Route.LoaderArgs) {
     );
   }
 
+  assertCanBuyCourse(course, currentUserId);
+
   const mode = url.searchParams.get("mode");
 
   const enrolled = isUserEnrolled(currentUserId, course.id);
@@ -350,6 +353,8 @@ export async function action({ params, request }: Route.ActionArgs) {
   if (!currentUserId) {
     throw data("You must be logged in.", { status: 401 });
   }
+
+  assertCanBuyCourse(course, currentUserId);
 
   const formData = await request.formData();
   const parsed = parseFormData(formData, purchaseActionSchema);
