@@ -244,6 +244,14 @@ export const refunds = sqliteTable(
     reason: text("reason").notNull(),
     // Null until someone approves — a declined request refunds nothing.
     amountRefunded: integer("amount_refunded"),
+    // Why a decider declined it. Null unless the Refund is Declined.
+    declineReason: text("decline_reason"),
+    // Refund Eligibility as judged when the learner asked: the last day of the
+    // Refund Window, and the learner's usage at that moment. Null on Refunds
+    // requested before these were recorded.
+    lastDayInWindowAtRequest: text("last_day_in_window_at_request"),
+    secondsWatchedAtRequest: integer("seconds_watched_at_request"),
+    completionAtRequest: real("completion_at_request"),
     requestedAt: text("requested_at")
       .notNull()
       .$defaultFn(() => new Date().toISOString()),
