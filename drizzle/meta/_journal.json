@@ -78,6 +78,13 @@
       "when": 1794684818388,
       "tag": "0010_slippery_hellfire_club",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1794685067646,
+      "tag": "0011_woozy_smiling_tiger",
+      "breakpoints": true
     }
   ]
 }

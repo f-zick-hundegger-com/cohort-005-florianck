@@ -36,6 +36,7 @@ import {
   quizzes,
   users,
 } from "~/db/schema";
+import { netAmountPaid } from "~/lib/revenue.server";
 import { splitRevenue, type AnalyticsRange } from "~/lib/analytics";
 import { getDiscountForCountry } from "~/lib/ppp";
 import {
@@ -440,7 +441,7 @@ function getRevenueOverTime(
   })`;
 
   const rows = db
-    .select({ bucket: bucketExpr, gross: sum(purchases.amountPaid) })
+    .select({ bucket: bucketExpr, gross: sum(netAmountPaid) })
     .from(purchases)
     .innerJoin(courses, eq(purchases.courseId, courses.id))
     .where(purchaseScope(instructorId, range))
@@ -736,7 +737,7 @@ function getCourseRevenueByCountry(
   const rows = db
     .select({
       country: purchases.country,
-      gross: sum(purchases.amountPaid),
+      gross: sum(netAmountPaid),
       purchaseCount: count(purchases.id),
     })
     .from(purchases)
@@ -888,7 +889,7 @@ export async function loader({ request, url }: Route.LoaderArgs) {
   // Gross revenue, the platform's fee and the instructor's net for the range.
   const summaryRow = db
     .select({
-      gross: sum(purchases.amountPaid),
+      gross: sum(netAmountPaid),
       purchaseCount: count(purchases.id),
     })
     .from(purchases)
@@ -908,7 +909,7 @@ export async function loader({ request, url }: Route.LoaderArgs) {
     .select({
       courseId: courses.id,
       title: courses.title,
-      gross: sum(purchases.amountPaid),
+      gross: sum(netAmountPaid),
       purchaseCount: count(purchases.id),
     })
     .from(purchases)

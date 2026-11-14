@@ -252,3 +252,167 @@ describe("declining a Refund", () => {
     expect(sent).toHaveLength(1);
   });
 });
+
+describe("approving a Refund", () => {
+  function approvable() {
+    const ctx = setup();
+    const refund = ctx.requestRefund();
+    const purchase = ctx.db.select().from(schema.purchases).get();
+    if (!purchase) throw new Error("expected a purchase");
+    ctx.db
+      .insert(schema.enrollments)
+      .values({ userId: ctx.base.user.id, courseId: ctx.base.course.id })
+      .run();
+    return { ...ctx, refund, purchase };
+  }
+
+  it("records the decider, time and the full amount paid, and emails the learner", async () => {
+    const { decisions, admin, refund, readRefund, sent } = approvable();
+
+    await decisions.approve(admin.id, refund.id);
+
+    expect(readRefund(refund.id)).toMatchObject({
+      status: RefundStatus.Approved,
+      amountRefunded: 4900,
+      resolvedByUserId: admin.id,
+      resolvedAt: NOW.toISOString(),
+    });
+    expect(sent).toHaveLength(1);
+    expect(sent[0].to).toBe("test@example.com");
+    expect(sent[0].subject).toContain("approved");
+  });
+
+  it("lets the owning instructor approve", async () => {
+    const { decisions, base, refund, readRefund } = approvable();
+
+    await decisions.approve(base.instructor.id, refund.id);
+
+    expect(readRefund(refund.id)?.status).toBe(RefundStatus.Approved);
+  });
+
+  it("removes the learner's enrollment but keeps lesson progress and watch events", async () => {
+    const { decisions, admin, refund, base, db } = approvable();
+    const mod = db
+      .insert(schema.modules)
+      .values({ courseId: base.course.id, title: "M", position: 1 })
+      .returning()
+      .get();
+    const lesson = db
+      .insert(schema.lessons)
+      .values({ moduleId: mod.id, title: "L", position: 1 })
+      .returning()
+      .get();
+    db.insert(schema.lessonProgress)
+      .values({
+        userId: base.user.id,
+        lessonId: lesson.id,
+        status: schema.LessonProgressStatus.Completed,
+      })
+      .run();
+    db.insert(schema.videoWatchEvents)
+      .values({
+        userId: base.user.id,
+        lessonId: lesson.id,
+        eventType: "pause",
+        positionSeconds: 30,
+      })
+      .run();
+
+    await decisions.approve(admin.id, refund.id);
+
+    expect(db.select().from(schema.enrollments).all()).toEqual([]);
+    expect(db.select().from(schema.lessonProgress).all()).toHaveLength(1);
+    expect(db.select().from(schema.videoWatchEvents).all()).toHaveLength(1);
+  });
+
+  it("leaves other learners' enrollments in the course alone", async () => {
+    const { decisions, admin, refund, base, db } = approvable();
+    const other = db
+      .insert(schema.users)
+      .values({ name: "Other", email: "o@example.com", role: UserRole.Student })
+      .returning()
+      .get();
+    db.insert(schema.enrollments)
+      .values({ userId: other.id, courseId: base.course.id })
+      .run();
+
+    await decisions.approve(admin.id, refund.id);
+
+    expect(db.select().from(schema.enrollments).all()).toHaveLength(1);
+  });
+
+  it("voids unclaimed coupon codes but not claimed ones", async () => {
+    const { decisions, admin, refund, base, purchase, db } = approvable();
+    const team = db
+      .insert(schema.teams)
+      .values({})
+      .returning()
+      .get();
+    const addCoupon = (code: string, redeemedAt: string | null) =>
+      db
+        .insert(schema.coupons)
+        .values({
+          teamId: team.id,
+          courseId: base.course.id,
+          code,
+          purchaseId: purchase.id,
+          redeemedByUserId: redeemedAt ? base.user.id : null,
+          redeemedAt,
+        })
+        .run();
+    addCoupon("UNCLAIMED", null);
+    addCoupon("CLAIMED", "2026-03-01T00:00:00.000Z");
+
+    await decisions.approve(admin.id, refund.id);
+
+    const byCode = Object.fromEntries(
+      db
+        .select()
+        .from(schema.coupons)
+        .all()
+        .map((c) => [c.code, c.voidedAt])
+    );
+    expect(byCode.UNCLAIMED).toBe(NOW.toISOString());
+    expect(byCode.CLAIMED).toBeNull();
+  });
+
+  it("refuses a second decision, in either direction", async () => {
+    const { decisions, admin, refund, sent } = approvable();
+    await decisions.approve(admin.id, refund.id);
+
+    await expect(decisions.approve(admin.id, refund.id)).rejects.toMatchObject({
+      status: 409,
+    });
+    await expect(
+      decisions.decline(admin.id, refund.id, "Too late.")
+    ).rejects.toMatchObject({ status: 409 });
+    expect(sent).toHaveLength(1);
+  });
+
+  it("refuses an instructor who does not own the course, and an admin on their own Purchase", async () => {
+    const { decisions, otherInstructor, admin, requestRefund, refund, readRefund } =
+      approvable();
+    const own = requestRefund({ userId: admin.id });
+
+    await expect(
+      decisions.approve(otherInstructor.id, refund.id)
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(decisions.approve(admin.id, own.id)).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(readRefund(refund.id)?.status).toBe(RefundStatus.Requested);
+    expect(readRefund(own.id)?.status).toBe(RefundStatus.Requested);
+  });
+
+  it("approves even when the Refund Window has closed", async () => {
+    const { decisions, admin, db, refund, purchase, readRefund } = approvable();
+    db.update(schema.purchases)
+      .set({ createdAt: "2025-01-01T00:00:00.000Z" })
+      .where(eq(schema.purchases.id, purchase.id))
+      .run();
+
+    await decisions.approve(admin.id, refund.id);
+
+    expect(readRefund(refund.id)?.status).toBe(RefundStatus.Approved);
+  });
+});

@@ -1,6 +1,15 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import type { Database } from "~/db";
-import { courses, purchases, refunds, RefundStatus, users, UserRole } from "~/db/schema";
+import {
+  coupons,
+  courses,
+  enrollments,
+  purchases,
+  refunds,
+  RefundStatus,
+  users,
+  UserRole,
+} from "~/db/schema";
 import { formatPrice } from "~/lib/utils";
 import { getCourseUsage, type CourseUsage } from "~/lib/refunds.server";
 
@@ -68,6 +77,29 @@ export function buildRefundDeclinedEmail(input: {
   };
 }
 
+export function buildRefundApprovedEmail(input: {
+  learnerName: string;
+  learnerEmail: string;
+  courseTitle: string;
+  amount: number;
+}): EmailMessage {
+  return {
+    to: input.learnerEmail,
+    subject: `Your refund for ${input.courseTitle} was approved`,
+    body: [
+      `Hi ${input.learnerName},`,
+      "",
+      `We have approved your refund of ${formatPrice(input.amount)} for ${input.courseTitle}.`,
+      "",
+      "You no longer have access to the course, but your progress is kept in case you buy it again.",
+      "",
+      "We will email you again when the money has been sent.",
+      "",
+      "— The Cadence team",
+    ].join("\n"),
+  };
+}
+
 type Dependencies = {
   db: Database;
   sendEmail: EmailSender;
@@ -94,6 +126,7 @@ export function createRefundDecisions({ db, sendEmail, now }: Dependencies) {
     const query = db
       .select({
         refundId: refunds.id,
+        purchaseId: purchases.id,
         status: refunds.status,
         purchaseUserId: purchases.userId,
         courseId: courses.id,
@@ -217,5 +250,70 @@ export function createRefundDecisions({ db, sendEmail, now }: Dependencies) {
     );
   }
 
-  return { listRequested, decline };
+  /**
+   * Approving always refunds the full amount paid. Eligibility was judged when
+   * the learner asked, so it is not re-run here.
+   */
+  async function approve(deciderId: number, refundId: number) {
+    const refund = loadDecidable(deciderId, refundId);
+    const decidedAt = now().toISOString();
+
+    db.transaction((tx) => {
+      // The status guard in the WHERE keeps two simultaneous deciders apart.
+      const result = tx
+        .update(refunds)
+        .set({
+          status: RefundStatus.Approved,
+          amountRefunded: refund.amountPaid,
+          resolvedByUserId: deciderId,
+          resolvedAt: decidedAt,
+        })
+        .where(
+          and(
+            eq(refunds.id, refundId),
+            eq(refunds.status, RefundStatus.Requested)
+          )
+        )
+        .run();
+      if (result.changes === 0) {
+        throw new RefundDecisionError(
+          "This refund has already been decided.",
+          409
+        );
+      }
+
+      // Access goes; lesson progress and watch events stay (ADR 0002).
+      tx.delete(enrollments)
+        .where(
+          and(
+            eq(enrollments.userId, refund.purchaseUserId),
+            eq(enrollments.courseId, refund.courseId)
+          )
+        )
+        .run();
+
+      // Claimed seats are left alone; only unclaimed codes stop working.
+      tx.update(coupons)
+        .set({ voidedAt: decidedAt })
+        .where(
+          and(
+            eq(coupons.purchaseId, refund.purchaseId),
+            isNull(coupons.redeemedAt),
+            isNull(coupons.voidedAt)
+          )
+        )
+        .run();
+    });
+
+    await sendEmail(
+      buildRefundApprovedEmail({
+        learnerName: refund.learnerName,
+        learnerEmail: refund.learnerEmail,
+        courseTitle: refund.courseTitle,
+        amount: refund.amountPaid,
+      })
+    );
+  }
+
+  return { listRequested, approve, decline };
 }

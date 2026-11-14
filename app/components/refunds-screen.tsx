@@ -101,14 +101,27 @@ function RefundRow({ refund }: { refund: RequestedRefundRow }) {
             </div>
           </fetcher.Form>
         ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => setDeclining(true)}
-          >
-            Decline
-          </Button>
+          <div className="flex gap-2">
+            <fetcher.Form method="post">
+              <input type="hidden" name="intent" value="approve" />
+              <input type="hidden" name="refundId" value={refund.refundId} />
+              <Button
+                type="submit"
+                size="sm"
+                disabled={fetcher.state !== "idle"}
+              >
+                Approve
+              </Button>
+            </fetcher.Form>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDeclining(true)}
+            >
+              Decline
+            </Button>
+          </div>
         )}
       </CardContent>
     </Card>

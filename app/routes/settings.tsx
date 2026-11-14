@@ -39,6 +39,7 @@ export function meta() {
 const REFUND_STATUS_LABELS: Record<RefundStatus, string> = {
   [RefundStatus.Requested]: "Requested",
   [RefundStatus.Approved]: "Approved",
+  [RefundStatus.Paid]: "Paid",
   [RefundStatus.Declined]: "Declined",
 };
 
@@ -46,6 +47,8 @@ const REFUND_STATUS_STYLES: Record<RefundStatus, string> = {
   [RefundStatus.Requested]:
     "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
   [RefundStatus.Approved]:
+    "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  [RefundStatus.Paid]:
     "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
   [RefundStatus.Declined]:
     "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",

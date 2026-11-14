@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
-import { db, type Database } from "~/db";
+import type { Database } from "~/db";
 import {
   coupons,
   lessonProgress,
@@ -182,18 +182,19 @@ export function getCourseUsage(
 }
 
 export function getRefundEligibility(
+  database: Database,
   userId: number,
   courseId: number,
   today: Date = new Date()
 ): RefundEligibility {
   const purchase =
-    db
+    database
       .select()
       .from(purchases)
       .where(
         and(eq(purchases.userId, userId), eq(purchases.courseId, courseId))
       )
-      .orderBy(desc(purchases.createdAt))
+      .orderBy(desc(purchases.createdAt), desc(purchases.id))
       .get() ?? null;
 
   if (!purchase) {
@@ -210,7 +211,7 @@ export function getRefundEligibility(
     );
   }
 
-  const refundStatuses = db
+  const refundStatuses = database
     .select({ status: refunds.status })
     .from(refunds)
     .where(eq(refunds.purchaseId, purchase.id))
@@ -219,7 +220,7 @@ export function getRefundEligibility(
 
   // A seat that came out of a team licence, and has been claimed, belongs to
   // the team — the learner cannot hand it back on their own.
-  const claimedSeat = db
+  const claimedSeat = database
     .select({ id: coupons.id })
     .from(coupons)
     .where(
@@ -227,7 +228,7 @@ export function getRefundEligibility(
     )
     .get();
 
-  const lessonIds = getLessonIdsForCourse(db, courseId);
+  const lessonIds = getLessonIdsForCourse(database, courseId);
 
   return decideRefundEligibility(
     {
@@ -235,8 +236,8 @@ export function getRefundEligibility(
       refundStatuses,
       isClaimedTeamSeat: Boolean(claimedSeat),
       lessonCount: lessonIds.length,
-      completedLessonCount: getCompletedLessonCount(db, userId, lessonIds),
-      secondsWatched: getSecondsWatched(db, userId, lessonIds),
+      completedLessonCount: getCompletedLessonCount(database, userId, lessonIds),
+      secondsWatched: getSecondsWatched(database, userId, lessonIds),
     },
     today
   );

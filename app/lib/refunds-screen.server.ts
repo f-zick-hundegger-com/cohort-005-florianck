@@ -20,14 +20,19 @@ function getRefundDecisions() {
   });
 }
 
-const refundsActionSchema = z.object({
-  intent: z.literal("decline"),
-  refundId: z.coerce.number().int().positive(),
-  declineReason: z
-    .string()
-    .trim()
-    .min(1, "Give the learner a reason for declining."),
-});
+const refundIdSchema = z.coerce.number().int().positive();
+
+const refundsActionSchema = z.discriminatedUnion("intent", [
+  z.object({ intent: z.literal("approve"), refundId: refundIdSchema }),
+  z.object({
+    intent: z.literal("decline"),
+    refundId: refundIdSchema,
+    declineReason: z
+      .string()
+      .trim()
+      .min(1, "Give the learner a reason for declining."),
+  }),
+]);
 
 export async function loadRefundsScreen(request: Request) {
   const { userId } = await requireInstructorOrAdmin(request);
@@ -42,12 +47,15 @@ export async function runRefundsScreenAction(request: Request) {
     return data({ errors: parsed.errors }, { status: 400 });
   }
 
+  const refundDecisions = getRefundDecisions();
+  const input = parsed.data;
+
   try {
-    await getRefundDecisions().decline(
-      userId,
-      parsed.data.refundId,
-      parsed.data.declineReason
-    );
+    if (input.intent === "approve") {
+      await refundDecisions.approve(userId, input.refundId);
+      return { success: true, message: "Refund approved." };
+    }
+    await refundDecisions.decline(userId, input.refundId, input.declineReason);
   } catch (error) {
     if (error instanceof RefundDecisionError) {
       throw data(error.message, { status: error.status });

@@ -147,3 +147,14 @@ describe("decideRefundEligibility", () => {
     ).toMatchObject({ eligible: true });
   });
 });
+
+describe("decideRefundEligibility with a Paid Refund", () => {
+  it("is not eligible again on a Purchase whose Refund was Paid", () => {
+    expect(
+      decideRefundEligibility(
+        facts({ refundStatuses: [RefundStatus.Paid] }),
+        dayAfterPurchase
+      )
+    ).toMatchObject({ eligible: false, reason: "already-refunded" });
+  });
+});
