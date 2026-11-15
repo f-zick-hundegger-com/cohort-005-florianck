@@ -50,3 +50,9 @@ _Avoid_: Gateway, processor, PSP
 **Chargeback**:
 The cardholder's bank pulling money back for a Purchase without going through us. Reserved: the platform does not handle chargebacks yet.
 _Avoid_: Using it for a learner's request (that is a Refund)
+
+## Notifications
+
+**Notification**:
+A message addressed to one user about something that happened on the platform, which they find in the app later and which stays there until they have dealt with it. Notifications exist only inside the app.
+_Avoid_: Alert, message, toast (a toast is the brief confirmation shown right after your own action, and is not a Notification), email
