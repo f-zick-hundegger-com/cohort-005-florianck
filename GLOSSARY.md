@@ -56,3 +56,7 @@ _Avoid_: Using it for a learner's request (that is a Refund)
 **Notification**:
 A message addressed to one user about something that happened on the platform, which they find in the app later and which stays there until they have dealt with it. Notifications exist only inside the app.
 _Avoid_: Alert, message, toast (a toast is the brief confirmation shown right after your own action, and is not a Notification), email
+
+**Reminder**:
+A Notification the platform sends on its own because something has not happened yet, such as a learner not returning to a course they started. Every other Notification follows something someone did.
+_Avoid_: Nudge, motivational notification
