@@ -12,5 +12,6 @@ Cadence's Notification Service is Knock. Its free plan needs no credit card and 
 
 - Knock's free plan shows Knock branding on its prebuilt components, so Cadence builds its feed on the headless hooks.
 - Knock's free plan sets the monthly volume Cadence can send, which matters for any Notification addressed to many users at once.
+- Knock is the only record of a Notification and of whether it has been read or dismissed. Cadence keeps no copy in its own database, because the feed is loaded in the browser straight from Knock and nothing in Cadence would read a copy. A Notification's wording is fixed when it is sent. If Knock is unreachable the feed shows that it is unavailable, and if Knock's plan ever limited how long it keeps the feed, Notifications nobody had dealt with would be lost.
 
 Sources: research in `docs/research/notification-services.md` on branch `research/notification-services`. Knock's pricing page was read on 2026-11-15.
