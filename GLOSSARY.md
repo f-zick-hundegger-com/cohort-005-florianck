@@ -60,3 +60,7 @@ _Avoid_: Alert, message, toast (a toast is the brief confirmation shown right af
 **Reminder**:
 A Notification the platform sends on its own because something has not happened yet, such as a learner not returning to a course they started. Every other Notification follows something someone did.
 _Avoid_: Nudge, motivational notification
+
+**Notification Service**:
+The outside service that delivers Notifications into the app for us, such as Knock. Which one we use can change; the meaning of a Notification does not.
+_Avoid_: Inbox provider, notification vendor, naming the service itself when you mean the role
