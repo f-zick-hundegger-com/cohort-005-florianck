@@ -1,4 +1,14 @@
 import { Outlet } from "react-router";
+import { useState } from "react";
+import { buildPrototypeNotifications } from "~/lib/notifications.prototype.server";
+import {
+  useProtoNotifications,
+  PrototypeSwitcher,
+  VariantABell,
+  VariantBNavItem,
+  VariantCTrigger,
+  VariantCDrawer,
+} from "~/components/notifications.prototype";
 import type { Route } from "./+types/layout.app";
 import { Sidebar } from "~/components/sidebar";
 import { DevUI } from "~/components/dev-ui";
@@ -213,6 +223,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     countryTierInfo,
     countries: COUNTRIES,
     isTeamAdmin: currentUserId ? isTeamAdmin(currentUserId) : false,
+    // PROTOTYPE (ticket #13)
+    prototypeNotifications: buildPrototypeNotifications(currentUser ?? null),
   };
 }
 
@@ -225,7 +237,11 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
     countryTierInfo,
     countries,
     isTeamAdmin: userIsTeamAdmin,
+    prototypeNotifications,
   } = loaderData;
+  // PROTOTYPE (ticket #13): Notifications variants
+  const proto = useProtoNotifications(prototypeNotifications);
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -233,10 +249,22 @@ export default function AppLayout({ loaderData }: Route.ComponentProps) {
         currentUser={currentUser}
         recentCourses={recentCourses}
         isTeamAdmin={userIsTeamAdmin}
+        headerExtra={currentUser && proto.variant === "A" ? <VariantABell s={proto} /> : null}
+        navExtra={
+          !currentUser ? null : proto.variant === "B" ? (
+            <VariantBNavItem s={proto} />
+          ) : proto.variant === "C" ? (
+            <VariantCTrigger s={proto} onOpen={() => setDrawerOpen(true)} />
+          ) : null
+        }
       />
       <main className="flex-1 overflow-y-auto">
-        <Outlet />
+        <Outlet context={proto} />
       </main>
+      {proto.variant === "C" && (
+        <VariantCDrawer s={proto} open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      )}
+      <PrototypeSwitcher s={proto} />
       <DevUI
         users={users}
         currentUser={currentUser}
