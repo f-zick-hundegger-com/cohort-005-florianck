@@ -5,7 +5,6 @@ import {
   quizOptions,
   quizAttempts,
   quizAnswers,
-  QuestionType,
 } from "~/db/schema";
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
@@ -72,22 +71,15 @@ export type QuestionResult = {
 
 type QuizQuestion = typeof quizQuestions.$inferSelect;
 
-const GRADED_TYPES: ReadonlySet<QuestionType> = new Set([
-  QuestionType.MultipleChoice,
-  QuestionType.TrueFalse,
-]);
-
-/** The first correct option of each graded question, in one query. */
+/** The first correct option of each question, in one query. */
 function findCorrectOptionIds(questions: QuizQuestion[]): Map<number, number> {
-  const graded = questions
-    .filter((question) => GRADED_TYPES.has(question.questionType))
-    .map((question) => question.id);
+  const questionIds = questions.map((question) => question.id);
   const correct = db
     .select()
     .from(quizOptions)
     .where(
       and(
-        inArray(quizOptions.questionId, graded),
+        inArray(quizOptions.questionId, questionIds),
         eq(quizOptions.isCorrect, true)
       )
     )

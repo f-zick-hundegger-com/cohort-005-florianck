@@ -382,6 +382,29 @@ describe("computeResult", () => {
     ]);
   });
 
+  it("grades against the first correct option when a question has two", () => {
+    const secondCorrect = db
+      .insert(schema.quizOptions)
+      .values({
+        questionId: questions[0].questionId,
+        optionText: "also true",
+        isCorrect: true,
+      })
+      .returning()
+      .get().id;
+
+    const result = computeResult(
+      base.user.id,
+      quizId,
+      answers([secondCorrect])
+    );
+
+    expect(result?.questionResults[0]).toMatchObject({
+      correct: false,
+      correctOptionId: correct[0],
+    });
+  });
+
   it("scores a quiz with no questions as zero", () => {
     const emptyQuizId = db
       .insert(schema.quizzes)
