@@ -13,20 +13,21 @@ export function describeDraft(
   draft: string,
   savedBody: string | null
 ): NoteDraft {
-  const length = draft.length;
-  const status = statusOf(draft, savedBody);
+  // The action trims before it checks and stores, so judge the trimmed text.
+  const body = draft.trim();
+  const status = statusOf(body, savedBody);
   return {
     status,
-    length,
+    length: body.length,
     maxLength: MAX_NOTE_LENGTH,
     canSave: status === "unsaved",
   };
 }
 
-function statusOf(draft: string, savedBody: string | null): NoteDraftStatus {
-  if (draft.length > MAX_NOTE_LENGTH) return "too-long";
-  if (draft === (savedBody ?? "")) return "saved";
+function statusOf(body: string, savedBody: string | null): NoteDraftStatus {
+  if (body.length > MAX_NOTE_LENGTH) return "too-long";
+  if (body === (savedBody ?? "")) return "saved";
   // The action rejects a blank note, so a blank draft is never saveable.
-  if (draft.trim().length === 0) return "empty";
+  if (body.length === 0) return "empty";
   return "unsaved";
 }

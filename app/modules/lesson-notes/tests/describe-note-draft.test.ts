@@ -48,3 +48,17 @@ describe("describeNoteDraft", () => {
     expect(draft.length).toBe(MAX_NOTE_LENGTH + 1);
   });
 });
+
+describe("describeNoteDraft, against the trimmed text the action saves", () => {
+  it("reports a draft as saved once the trimmed note is stored", () => {
+    const draft = describeNoteDraft("  hello \n", "hello");
+    expect(draft.status).toBe("saved");
+    expect(draft.canSave).toBe(false);
+  });
+
+  it("does not count surrounding whitespace toward the limit", () => {
+    const draft = describeNoteDraft(`${"a".repeat(MAX_NOTE_LENGTH)}  `, null);
+    expect(draft.status).toBe("unsaved");
+    expect(draft.length).toBe(MAX_NOTE_LENGTH);
+  });
+});
