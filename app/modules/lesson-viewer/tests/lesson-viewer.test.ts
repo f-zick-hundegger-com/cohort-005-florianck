@@ -15,6 +15,7 @@ vi.mock("~/db", () => ({
 
 const {
   computeResult,
+  getQuizWithQuestions,
   getCourseWithDetails,
   getLessonThread,
   flattenCourseLessons,
@@ -326,6 +327,37 @@ describe("computeResult", () => {
         selectedOptionId: correct[0],
       }),
     ]);
+  });
+
+  it("scores a quiz with no questions as zero", () => {
+    const emptyQuizId = db
+      .insert(schema.quizzes)
+      .values({
+        lessonId: addLesson(addModule("M2", 2).id, "L2", 1).id,
+        title: "Empty",
+        passingScore: 0.7,
+      })
+      .returning()
+      .get().id;
+
+    expect(computeResult(base.user.id, emptyQuizId, {})).toMatchObject({
+      score: 0,
+      totalQuestions: 0,
+      questionResults: [],
+    });
+  });
+
+  it("gives each question its own options, in question order", () => {
+    const quiz = getQuizWithQuestions(quizId);
+
+    expect(
+      quiz?.questions.map((q) => ({
+        id: q.id,
+        options: q.options.map((o) => o.id),
+      }))
+    ).toEqual(
+      questions.map((q) => ({ id: q.questionId, options: [q.right, q.other] }))
+    );
   });
 
   it("returns null for an unknown quiz", () => {
