@@ -38,8 +38,6 @@ import { FullLesson } from "~/components/lesson-viewer/full-lesson";
 import { LockedLesson } from "~/components/lesson-viewer/locked-lesson";
 import { LessonErrorBoundary } from "~/components/lesson-viewer/lesson-error-boundary";
 import { db } from "~/db";
-import { quizzes } from "~/db/schema";
-import { eq } from "drizzle-orm";
 import { renderMarkdown } from "~/lib/markdown.server";
 import { data } from "react-router";
 import { z } from "zod";
@@ -67,6 +65,13 @@ const saveNoteSchema = z.object({
       `Your note is over ${MAX_NOTE_LENGTH.toLocaleString("en")} characters, so it was not saved.`
     ),
 });
+
+const submitQuizSchema = z.object({
+  intent: z.literal("submit-quiz"),
+  quizId: z.coerce.number().int().positive(),
+});
+
+const formIdSchema = z.coerce.number().int().positive();
 
 const deleteCommentSchema = z.object({
   intent: z.literal("delete-comment"),
@@ -422,26 +427,26 @@ export async function action({ params, request }: Route.ActionArgs) {
   }
 
   if (intent === "submit-quiz") {
-    const quizId = Number(formData.get("quizId"));
-    if (isNaN(quizId)) {
+    const parsed = parseFormData(formData, submitQuizSchema);
+    if (!parsed.success) {
       throw data("Invalid quiz ID", { status: 400 });
     }
+    const { quizId } = parsed.data;
     // Scope the quiz to this lesson so a quiz elsewhere can't be reached by
     // posting its id to this route.
-    const quiz = db.select().from(quizzes).where(eq(quizzes.id, quizId)).get();
-    if (!quiz || quiz.lessonId !== lessonId) {
+    const quiz = getQuizByLessonId(lessonId);
+    if (!quiz || quiz.id !== quizId) {
       throw data("Quiz not found", { status: 404 });
     }
 
-    // Collect answers: form fields named "question-{questionId}" with value = optionId
+    // Answers arrive as fields named "question-{questionId}" = optionId.
     const selectedAnswers: Record<number, number> = {};
     for (const [key, value] of formData.entries()) {
-      if (key.startsWith("question-")) {
-        const questionId = Number(key.replace("question-", ""));
-        const optionId = Number(value);
-        if (!isNaN(questionId) && !isNaN(optionId)) {
-          selectedAnswers[questionId] = optionId;
-        }
+      if (!key.startsWith("question-")) continue;
+      const questionId = formIdSchema.safeParse(key.slice("question-".length));
+      const optionId = formIdSchema.safeParse(value);
+      if (questionId.success && optionId.success) {
+        selectedAnswers[questionId.data] = optionId.data;
       }
     }
 
