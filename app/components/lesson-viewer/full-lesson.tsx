@@ -29,7 +29,6 @@ export function FullLesson({ data }: { data: FullLessonData }) {
   } = data;
   return (
     <div className="flex">
-      {/* Curriculum Sidebar */}
       <CurriculumSidebar
         course={course}
         curriculum={curriculum}
@@ -74,7 +73,6 @@ function LessonMedia({ data }: { data: FullLessonData }) {
 
   return (
     <>
-      {/* YouTube Video */}
       {lesson.videoUrl && (
         <YouTubePlayer
           videoUrl={lesson.videoUrl}
@@ -89,7 +87,6 @@ function LessonMedia({ data }: { data: FullLessonData }) {
         />
       )}
 
-      {/* Lesson Content */}
       {contentHtml && (
         <div
           className="prose prose-neutral dark:prose-invert mb-8 max-w-none"
