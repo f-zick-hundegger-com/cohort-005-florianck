@@ -12,7 +12,8 @@ import {
 
 export type Db = BetterSQLite3Database<typeof schema>;
 
-export const FEATURED_COURSE_LIMIT = 3;
+const SPOTLIGHT_COUNT = 1;
+const FEATURED_COURSE_COUNT = 3;
 
 export type FeaturedCourse = {
   id: number;
@@ -56,7 +57,7 @@ function getFeaturedCourses(db: Db) {
     .innerJoin(categories, eq(courses.categoryId, categories.id))
     .where(isPublished)
     .orderBy(desc(courses.createdAt), desc(courses.id))
-    .limit(FEATURED_COURSE_LIMIT + 1)
+    .limit(SPOTLIGHT_COUNT + FEATURED_COURSE_COUNT)
     .all();
 }
 

@@ -6,7 +6,6 @@ export type {
   LandingPage,
   LandingStats,
 } from "./lib/landing-page";
-export { FEATURED_COURSE_LIMIT } from "./lib/landing-page";
 
 /**
  * The landing page (`/`) bound to a database. The app uses `landingPage`,

@@ -3,7 +3,7 @@ import { createTestDb, seedBaseData, type TestDb } from "~/test/setup";
 import * as schema from "~/db/schema";
 import { CourseStatus, UserRole } from "~/db/schema";
 import { markdown } from "~/lib/text";
-import { createLandingPage, FEATURED_COURSE_LIMIT } from "../index.server";
+import { createLandingPage } from "../index.server";
 
 let db: TestDb;
 let base: ReturnType<typeof seedBaseData>;
@@ -18,8 +18,6 @@ function landing() {
 }
 
 // ─── Fixtures ───
-// The module only reads, so rows go in directly. Kept in one place so a
-// schema change touches only this block.
 
 let counter = 0;
 
@@ -105,7 +103,6 @@ describe("spotlight and featured courses", () => {
     addCourse("Newer", { createdAt: "2029-01-01T00:00:00.000Z" });
     addCourse("New", { createdAt: "2028-01-01T00:00:00.000Z" });
 
-    expect(FEATURED_COURSE_LIMIT).toBe(3);
     expect(titlesOnPage()).toEqual({
       spotlight: "Newest",
       featured: ["Newer", "New", "Test Course"],
