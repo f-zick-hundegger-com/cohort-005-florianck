@@ -19,6 +19,9 @@ const {
   getCourseWithDetails,
   getLessonThread,
   flattenCourseLessons,
+  getLessonProgressForCourse,
+  markLessonComplete,
+  markLessonInProgress,
 } = await import("../index.server");
 
 let base: ReturnType<typeof seedBaseData>;
@@ -188,6 +191,56 @@ describe("getLessonThread", () => {
     });
 
     expect(getLessonThread(lessonId)).toEqual([]);
+  });
+});
+
+describe("markLessonComplete", () => {
+  const now = new Date("2026-03-01T12:00:00.000Z");
+
+  it("completes a lesson the Student never opened, at the given time", () => {
+    const lessonId = addLesson(addModule("M", 1).id, "L", 1).id;
+
+    expect(markLessonComplete(base.user.id, lessonId, now)).toMatchObject({
+      status: schema.LessonProgressStatus.Completed,
+      completedAt: now.toISOString(),
+    });
+  });
+
+  it("completes a lesson already in progress, keeping one row", () => {
+    const lessonId = addLesson(addModule("M", 1).id, "L", 1).id;
+    markLessonInProgress(base.user.id, lessonId);
+
+    markLessonComplete(base.user.id, lessonId, now);
+
+    expect(getLessonProgressForCourse(base.user.id, base.course.id)).toEqual([
+      expect.objectContaining({
+        lessonId,
+        status: schema.LessonProgressStatus.Completed,
+        completedAt: now.toISOString(),
+      }),
+    ]);
+  });
+});
+
+describe("getLessonProgressForCourse", () => {
+  it("returns only this course's progress for this Student", () => {
+    const moduleId = addModule("M", 1).id;
+    const first = addLesson(moduleId, "A", 1).id;
+    const second = addLesson(moduleId, "B", 2).id;
+    markLessonInProgress(base.user.id, first);
+    markLessonInProgress(base.instructor.id, second);
+
+    expect(
+      getLessonProgressForCourse(base.user.id, base.course.id).map(
+        (p) => p.lessonId
+      )
+    ).toEqual([first]);
+  });
+
+  it("returns nothing for a course with no modules", () => {
+    expect(getLessonProgressForCourse(base.user.id, base.course.id)).toEqual(
+      []
+    );
   });
 });
 

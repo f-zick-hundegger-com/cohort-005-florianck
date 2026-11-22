@@ -1,6 +1,6 @@
 import { db } from "~/db";
 import { categories, courses, lessons, modules, users } from "~/db/schema";
-import { eq, or } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 export function getCourseWithDetails(id: number) {
   const course = db
@@ -48,7 +48,7 @@ function getModulesWithLessons(courseId: number) {
       ? db
           .select()
           .from(lessons)
-          .where(or(...moduleIds.map((mid) => eq(lessons.moduleId, mid))))
+          .where(inArray(lessons.moduleId, moduleIds))
           .orderBy(lessons.position)
           .all()
       : [];

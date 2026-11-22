@@ -6,7 +6,7 @@ import {
   videoWatchEvents,
   LessonProgressStatus,
 } from "~/db/schema";
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 export function getLessonProgress(userId: number, lessonId: number) {
   return db
@@ -33,7 +33,12 @@ export function getLessonProgressForCourse(userId: number, courseId: number) {
   const courseLessons = db
     .select({ id: lessons.id })
     .from(lessons)
-    .where(or(...courseModules.map((m) => eq(lessons.moduleId, m.id))))
+    .where(
+      inArray(
+        lessons.moduleId,
+        courseModules.map((m) => m.id)
+      )
+    )
     .all();
 
   if (courseLessons.length === 0) return [];
@@ -44,13 +49,20 @@ export function getLessonProgressForCourse(userId: number, courseId: number) {
     .where(
       and(
         eq(lessonProgress.userId, userId),
-        or(...courseLessons.map((l) => eq(lessonProgress.lessonId, l.id)))
+        inArray(
+          lessonProgress.lessonId,
+          courseLessons.map((l) => l.id)
+        )
       )
     )
     .all();
 }
 
-export function markLessonComplete(userId: number, lessonId: number) {
+export function markLessonComplete(
+  userId: number,
+  lessonId: number,
+  now: Date
+) {
   const existing = getLessonProgress(userId, lessonId);
 
   if (existing) {
@@ -58,7 +70,7 @@ export function markLessonComplete(userId: number, lessonId: number) {
       .update(lessonProgress)
       .set({
         status: LessonProgressStatus.Completed,
-        completedAt: new Date().toISOString(),
+        completedAt: now.toISOString(),
       })
       .where(eq(lessonProgress.id, existing.id))
       .returning()
@@ -71,7 +83,7 @@ export function markLessonComplete(userId: number, lessonId: number) {
       userId,
       lessonId,
       status: LessonProgressStatus.Completed,
-      completedAt: new Date().toISOString(),
+      completedAt: now.toISOString(),
     })
     .returning()
     .get();
