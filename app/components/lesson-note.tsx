@@ -92,6 +92,13 @@ function NoteStatus({
   if (error && draft.status !== "saved") {
     return <span className="text-sm text-destructive">{error}</span>;
   }
+  if (draft.status === "empty" && updatedAt) {
+    return (
+      <span className="text-xs text-muted-foreground">
+        A note can&apos;t be blank
+      </span>
+    );
+  }
   if (draft.status === "unsaved") {
     return (
       <span className="text-xs text-muted-foreground">Unsaved changes</span>
