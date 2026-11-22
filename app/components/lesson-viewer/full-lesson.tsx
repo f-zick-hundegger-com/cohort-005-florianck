@@ -60,7 +60,7 @@ export function FullLesson({ data }: { data: FullLessonData }) {
   );
 }
 
-/** The video, the Student's note and the lesson body, in reading order. */
+/** The video and the lesson body, in reading order. */
 function LessonMedia({ data }: { data: FullLessonData }) {
   const {
     lesson,
@@ -69,7 +69,6 @@ function LessonMedia({ data }: { data: FullLessonData }) {
     currentUserId,
     lastWatchPosition,
     watchProgress,
-    note,
   } = data;
   const [autoplay, toggleAutoplay] = useAutoplay();
 
@@ -89,9 +88,6 @@ function LessonMedia({ data }: { data: FullLessonData }) {
           onToggleAutoplay={toggleAutoplay}
         />
       )}
-
-      {/* Note — under the video, so the Student can write while they watch */}
-      {currentUserId && <LessonNote key={lesson.id} note={note} />}
 
       {/* Lesson Content */}
       {contentHtml && (
@@ -124,9 +120,6 @@ function LessonActivity({ data }: { data: FullLessonData }) {
     nextLesson,
     quiz,
     bestAttempt,
-    comments,
-    canModerate,
-    instructorName,
   } = data;
 
   return (
@@ -148,6 +141,29 @@ function LessonActivity({ data }: { data: FullLessonData }) {
         />
       )}
 
+      <LessonWriting data={data} />
+
+      <LessonPager
+        courseSlug={course.slug}
+        courseTitle={course.title}
+        prevLesson={prevLesson}
+        nextLesson={nextLesson}
+      />
+    </>
+  );
+}
+
+/**
+ * The Student's private note and the shared discussion: the lesson's two
+ * writing surfaces, kept together.
+ */
+function LessonWriting({ data }: { data: FullLessonData }) {
+  const { lesson, currentUserId, note, comments, canModerate, instructorName } =
+    data;
+  return (
+    <>
+      {currentUserId && <LessonNote key={lesson.id} note={note} />}
+
       {/* Questions & Discussion — confidential to people with access */}
       <CommentThread
         comments={comments}
@@ -155,13 +171,6 @@ function LessonActivity({ data }: { data: FullLessonData }) {
         canModerate={canModerate}
         canPost
         instructorName={instructorName}
-      />
-
-      <LessonPager
-        courseSlug={course.slug}
-        courseTitle={course.title}
-        prevLesson={prevLesson}
-        nextLesson={nextLesson}
       />
     </>
   );
